@@ -1,0 +1,13 @@
+{
+  "itemGroup.jei_enhancements": "Example Mod Tab",
+  "block.jei_enhancements.example_block": "Example Block",
+  "item.jei_enhancements.example_item": "Example Item",
+
+  "jei_enhancements.configuration.title": "JEI Enhancements Configs",
+  "jei_enhancements.configuration.section.jei_enhancements.common.toml": "JEI Enhancements Configs",
+  "jei_enhancements.configuration.section.jei_enhancements.common.toml.title": "JEI Enhancements Configs",
+  "jei_enhancements.configuration.items": "Item List",
+  "jei_enhancements.configuration.logDirtBlock": "Log Dirt Block",
+  "jei_enhancements.configuration.magicNumberIntroduction": "Magic Number Text",
+  "jei_enhancements.configuration.magicNumber": "Magic Number"
+}
