@@ -212,37 +212,20 @@ public class BookmarkManager {
     }
     
     /**
-     * 当JEI书签被删除时调用
+     * 当JEI书签被删除时调用（仅处理单个书签，不处理组头）
+     * 
+     * 注意：组头（RESULT类型）的删除由BookmarkListMixin直接调用removeGroup()处理，
+     * 这里只处理普通成员的删除。
      */
     public void onBookmarkRemoved(IBookmark bookmark) {
         // 首先尝试从映射表查找
         BookmarkItem item = jeiBookmarkMap.remove(bookmark);
         
         if (item != null) {
-            // 检查是否是组头（输出物品）
-            if (item.getType() == BookmarkItem.BookmarkItemType.RESULT) {
-                // 删除整个组
-                int groupId = item.getGroupId();
-                List<BookmarkItem> toRemove = new ArrayList<>();
-                for (BookmarkItem groupItem : bookmarkItems) {
-                    if (groupItem.getGroupId() == groupId) {
-                        toRemove.add(groupItem);
-                        // 从映射表中移除
-                        if (groupItem.getLinkedBookmark() != null) {
-                            jeiBookmarkMap.remove(groupItem.getLinkedBookmark());
-                        }
-                    }
-                }
-                bookmarkItems.removeAll(toRemove);
-                if (groupId != DEFAULT_GROUP_ID) {
-                    groups.remove(groupId);
-                }
-                JEIEnhancements.LOGGER.info("Removed entire group {} because output was removed", groupId);
-            } else {
-                // 只删除这个成员
-                bookmarkItems.remove(item);
-                JEIEnhancements.LOGGER.info("Removed bookmark item: {}", item.getItemKey());
-            }
+            // 组头的删除由mixin处理，这里只删除单个成员
+            // （如果是组头，mixin会调用removeGroup，不会走到这里）
+            bookmarkItems.remove(item);
+            JEIEnhancements.LOGGER.info("Removed bookmark item: {}", item.getItemKey());
             markDirty();
         }
     }
