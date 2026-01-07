@@ -141,9 +141,25 @@ public class BookmarkQuantityManager {
     
     /**
      * 将书签添加到配方组
+     * 注意：JEI不允许重复书签，所以如果物品已经在其他组中，需要特殊处理
      */
     public void addToGroup(RecipeBookmarkGroup group, IBookmark bookmark, int baseQuantity, boolean isOutput) {
         String key = getBookmarkKey(bookmark);
+        
+        // 检查是否已经在其他组中
+        RecipeBookmarkGroup existingGroup = bookmarkToGroup.get(key);
+        if (existingGroup != null && existingGroup != group) {
+            // 物品已经在另一个组中，NEI风格：合并到现有组或跳过
+            // 这里我们选择跳过，因为JEI不支持重复书签
+            JEIEnhancements.LOGGER.debug("Bookmark {} already in another group, skipping", key);
+            return;
+        }
+        
+        // 检查是否已经在当前组中（防止重复添加）
+        if (group.containsKey(key)) {
+            JEIEnhancements.LOGGER.debug("Bookmark {} already in this group, skipping", key);
+            return;
+        }
         
         // 添加到组
         group.addMember(bookmark, key, baseQuantity, isOutput);
@@ -151,6 +167,40 @@ public class BookmarkQuantityManager {
         
         // 移除单独的数量
         bookmarkQuantities.remove(key);
+        markDirty();
+    }
+    
+    /**
+     * 切换组的展开/折叠状态（NEI风格）
+     */
+    public void toggleGroupExpanded(RecipeBookmarkGroup group) {
+        if (group != null) {
+            group.toggleExpanded();
+            markDirty();
+        }
+    }
+    
+    /**
+     * 设置组的展开状态
+     */
+    public void setGroupExpanded(RecipeBookmarkGroup group, boolean expanded) {
+        if (group != null) {
+            group.setExpanded(expanded);
+            markDirty();
+        }
+    }
+    
+    /**
+     * 展开/折叠所有组
+     */
+    public void toggleAllGroups(Boolean expanded) {
+        if (expanded == null) {
+            // 如果没有指定，则根据当前状态切换
+            expanded = recipeGroups.stream().noneMatch(RecipeBookmarkGroup::isExpanded);
+        }
+        for (RecipeBookmarkGroup group : recipeGroups) {
+            group.setExpanded(expanded);
+        }
         markDirty();
     }
     
@@ -261,6 +311,7 @@ public class BookmarkQuantityManager {
                 
                 JsonObject groupObj = new JsonObject();
                 groupObj.addProperty("multiplier", group.getMultiplier());
+                groupObj.addProperty("expanded", group.isExpanded());
                 
                 JsonArray members = new JsonArray();
                 for (RecipeBookmarkGroup.GroupMember member : group.getMembers()) {
@@ -322,6 +373,11 @@ public class BookmarkQuantityManager {
                     
                     RecipeBookmarkGroup group = new RecipeBookmarkGroup();
                     group.setMultiplier(groupObj.get("multiplier").getAsDouble());
+                    
+                    // 加载展开状态（NEI风格）
+                    if (groupObj.has("expanded")) {
+                        group.setExpanded(groupObj.get("expanded").getAsBoolean());
+                    }
                     
                     JsonArray members = groupObj.getAsJsonArray("members");
                     for (JsonElement memberElem : members) {

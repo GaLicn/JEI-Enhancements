@@ -1,14 +1,22 @@
 package com.gali.jei_enhancements.event;
 
+import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
+import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
+import com.gali.jei_enhancements.bookmark.RecipeBookmarkGroup;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.core.collect.ListMultiMap;
+import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
 import mezz.jei.gui.overlay.IngredientListRenderer;
+import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
+import mezz.jei.gui.overlay.elements.IElement;
+import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -16,10 +24,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 处理书签页码区域的点击事件
- * 点击页码区域切换水平/纵向排列
+ * - 点击页码区域切换水平/纵向排列
+ * - Alt+点击分组物品切换展开/折叠（NEI风格）
  */
 public class BookmarkLayoutClickHandler {
 
@@ -50,6 +60,14 @@ public class BookmarkLayoutClickHandler {
             return;
         }
 
+        // NEI风格：Alt+点击切换分组展开/折叠
+        if (Screen.hasAltDown()) {
+            if (handleGroupToggle(overlay, mouseX, mouseY)) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+
         // 检查是否点击在页码区域
         if (isClickOnPageArea(overlay, mouseX, mouseY)) {
             // 切换布局模式
@@ -62,6 +80,61 @@ public class BookmarkLayoutClickHandler {
             // 取消事件
             event.setCanceled(true);
         }
+    }
+    
+    /**
+     * 处理分组展开/折叠切换（NEI风格：Alt+点击）
+     */
+    private boolean handleGroupToggle(BookmarkOverlay overlay, double mouseX, double mouseY) {
+        try {
+            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
+            contentsField.setAccessible(true);
+            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
+            
+            // 查找鼠标下的槽位
+            Optional<IngredientListSlot> slotOpt = contents.getSlots()
+                .filter(slot -> {
+                    var area = slot.getRenderArea();
+                    return mouseX >= area.x() && mouseX < area.x() + area.width() &&
+                           mouseY >= area.y() && mouseY < area.y() + area.height();
+                })
+                .findFirst();
+            
+            if (slotOpt.isEmpty()) {
+                return false;
+            }
+            
+            IngredientListSlot slot = slotOpt.get();
+            IElement<?> element = slot.getElement();
+            if (element == null) {
+                return false;
+            }
+            
+            Optional<IBookmark> bookmarkOpt = element.getBookmark();
+            if (bookmarkOpt.isEmpty()) {
+                return false;
+            }
+            
+            BookmarkQuantityManager manager = BookmarkQuantityManager.getInstance();
+            RecipeBookmarkGroup group = manager.getGroup(bookmarkOpt.get());
+            
+            if (group != null && group.size() > 1) {
+                // 切换展开/折叠状态
+                manager.toggleGroupExpanded(group);
+                manager.save();
+                
+                // 刷新显示
+                forceRefreshBookmarks(overlay);
+                
+                JEIEnhancements.LOGGER.debug("Toggled group expanded: {}", group.isExpanded());
+                return true;
+            }
+            
+        } catch (Exception e) {
+            JEIEnhancements.LOGGER.error("Error handling group toggle", e);
+        }
+        
+        return false;
     }
 
     /**

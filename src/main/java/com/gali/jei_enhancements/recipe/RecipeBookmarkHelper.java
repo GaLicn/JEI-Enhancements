@@ -233,6 +233,9 @@ public class RecipeBookmarkHelper {
     
     /**
      * 添加单个原料到书签
+     * 
+     * NEI风格：如果书签已存在，返回现有书签用于分组
+     * JEI不允许重复书签，所以我们复用已存在的书签
      */
     private static <T> IngredientBookmark<T> addIngredientToBookmark(
             ITypedIngredient<T> ingredient,
@@ -241,8 +244,9 @@ public class RecipeBookmarkHelper {
     ) {
         IngredientBookmark<T> bookmark = bookmarkFactory.create(ingredient);
         
-        // 检查是否已存在
+        // 检查是否已存在 - NEI风格：已存在的书签也可以加入分组
         if (bookmarkList.contains(bookmark)) {
+            // 返回书签用于分组，即使没有新添加
             return bookmark;
         }
         

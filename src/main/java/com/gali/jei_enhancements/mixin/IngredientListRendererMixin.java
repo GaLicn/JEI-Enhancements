@@ -213,21 +213,42 @@ public abstract class IngredientListRendererMixin {
                     continue;
                 }
                 
-                // 收集这个组的所有元素
+                // NEI风格：根据展开状态决定显示方式
                 List<IElement<?>> groupElements = new ArrayList<>();
-                for (int j = startIndex; j < ingredientList.size(); j++) {
-                    IElement<?> otherElement = ingredientList.get(j);
-                    if (!otherElement.isVisible()) {
-                        continue;
+                
+                if (elementGroup.isExpanded()) {
+                    // 展开状态：收集这个组的所有元素
+                    for (int j = startIndex; j < ingredientList.size(); j++) {
+                        IElement<?> otherElement = ingredientList.get(j);
+                        if (!otherElement.isVisible()) {
+                            continue;
+                        }
+                        
+                        Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
+                        if (otherBookmarkOpt.isPresent()) {
+                            RecipeBookmarkGroup otherGroup = manager.getGroup(otherBookmarkOpt.get());
+                            // 使用对象引用比较
+                            if (otherGroup == elementGroup) {
+                                groupElements.add(otherElement);
+                                processedIndices.add(j);
+                            }
+                        }
                     }
+                } else {
+                    // 折叠状态：只显示第一个元素（输出物品）
+                    groupElements.add(element);
+                    processedIndices.add(i);
                     
-                    Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
-                    if (otherBookmarkOpt.isPresent()) {
-                        RecipeBookmarkGroup otherGroup = manager.getGroup(otherBookmarkOpt.get());
-                        // 使用对象引用比较，而不是groupId
-                        if (otherGroup == elementGroup) {
-                            groupElements.add(otherElement);
-                            processedIndices.add(j);
+                    // 标记其他成员为已处理（不显示）
+                    for (int j = startIndex; j < ingredientList.size(); j++) {
+                        if (j == i) continue;
+                        IElement<?> otherElement = ingredientList.get(j);
+                        Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
+                        if (otherBookmarkOpt.isPresent()) {
+                            RecipeBookmarkGroup otherGroup = manager.getGroup(otherBookmarkOpt.get());
+                            if (otherGroup == elementGroup) {
+                                processedIndices.add(j);
+                            }
                         }
                     }
                 }
