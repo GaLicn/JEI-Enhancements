@@ -68,6 +68,111 @@ public class BookmarkListMixin {
     }
     
     /**
+     * 拦截moveBookmark方法
+     * 完全接管移动逻辑，使用对象引用来正确处理同一物品的多个实例
+     * 组头（RESULT类型）不能被移动，也不能被其他书签替换位置
+     */
+    @Inject(method = "moveBookmark", at = @At("HEAD"), cancellable = true)
+    private void onMoveBookmark(IBookmark previousBookmark, IBookmark newBookmark, int offset, CallbackInfo ci) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        
+        // 查找两个书签对应的BookmarkItem
+        // newBookmark是被拖动的书签，previousBookmark是目标位置的书签
+        BookmarkItem draggedItem = manager.findBookmarkItem(newBookmark);
+        BookmarkItem targetItem = manager.findBookmarkItem(previousBookmark);
+        
+        // 如果有任何一个书签在我们的管理器中，完全接管移动逻辑
+        if (draggedItem != null || targetItem != null) {
+            // 检查是否涉及组头
+            if (draggedItem != null && draggedItem.getType() == BookmarkItem.BookmarkItemType.RESULT) {
+                // 组头不能被移动
+                JEIEnhancements.LOGGER.debug("Blocked moving group header: {}", draggedItem.getItemKey());
+                ci.cancel();
+                return;
+            }
+            
+            if (targetItem != null && targetItem.getType() == BookmarkItem.BookmarkItemType.RESULT) {
+                // 不能移动到组头的位置（替换组头）
+                JEIEnhancements.LOGGER.debug("Blocked moving to group header position: {}", targetItem.getItemKey());
+                ci.cancel();
+                return;
+            }
+            
+            // 如果两个书签都在我们的管理器中，且属于不同的组，阻止移动
+            if (draggedItem != null && targetItem != null) {
+                if (draggedItem.getGroupId() != targetItem.getGroupId()) {
+                    // 跨组移动，取消操作
+                    JEIEnhancements.LOGGER.debug("Blocked cross-group bookmark move: {} -> {}", 
+                            draggedItem.getGroupId(), targetItem.getGroupId());
+                    ci.cancel();
+                    return;
+                }
+            }
+            
+            // 同组内移动，使用对象引用来正确处理
+            // 使用 == 来查找正确的索引，而不是 equals
+            int targetIndex = jei_enhancements$indexOfByIdentity(previousBookmark);
+            int draggedIndex = jei_enhancements$indexOfByIdentity(newBookmark);
+            
+            if (targetIndex == -1 || draggedIndex == -1) {
+                ci.cancel();
+                return;
+            }
+            
+            int newIndex = targetIndex + offset;
+            if (newIndex == draggedIndex) {
+                ci.cancel();
+                return;
+            }
+            
+            if (newIndex < 0) {
+                newIndex += bookmarksList.size();
+            }
+            newIndex %= bookmarksList.size();
+            
+            // 执行移动（使用对象引用）
+            jei_enhancements$removeByIdentity(newBookmark);
+            bookmarksList.add(newIndex, newBookmark);
+            
+            // 通知监听器刷新UI
+            jei_enhancements$notifyListeners();
+            
+            JEIEnhancements.LOGGER.debug("Moved bookmark from {} to {}", draggedIndex, newIndex);
+            
+            // 取消原始方法
+            ci.cancel();
+        }
+        // 非管理的书签，让JEI正常处理
+    }
+    
+    /**
+     * 使用对象引用查找索引
+     */
+    @Unique
+    private int jei_enhancements$indexOfByIdentity(IBookmark bookmark) {
+        for (int i = 0; i < bookmarksList.size(); i++) {
+            if (bookmarksList.get(i) == bookmark) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    /**
+     * 使用对象引用从列表中移除（不从Set中移除）
+     */
+    @Unique
+    private void jei_enhancements$removeByIdentity(IBookmark bookmark) {
+        Iterator<IBookmark> iterator = bookmarksList.iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next() == bookmark) {
+                iterator.remove();
+                break;
+            }
+        }
+    }
+    
+    /**
      * 拦截setFromConfigFile方法
      * JEI从配置文件加载书签后，我们需要根据BookmarkManager的数据恢复重复的书签
      */
