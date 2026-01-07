@@ -164,18 +164,69 @@ public class BookmarkManager {
             return item;
         }
         
-        // 如果映射表中没有，尝试通过itemKey查找（兼容旧数据）
+        // 如果映射表中没有，不再自动建立映射
+        // 映射应该通过tryLinkBookmark在add时建立
+        return null;
+    }
+    
+    /**
+     * 尝试将JEI书签与已保存的BookmarkItem关联
+     * 按顺序匹配第一个itemKey相同且未关联的BookmarkItem
+     */
+    public void tryLinkBookmark(IBookmark bookmark) {
+        // 确保数据已加载
+        ensureLoaded();
+        
+        // 如果已经有映射，跳过
+        if (jeiBookmarkMap.containsKey(bookmark)) {
+            return;
+        }
+        
         String itemKey = getItemKey(bookmark);
-        for (BookmarkItem bi : bookmarkItems) {
-            if (bi.getItemKey().equals(itemKey) && bi.getLinkedBookmark() == null) {
+        
+        // 按顺序查找第一个itemKey相同且未关联的BookmarkItem
+        for (BookmarkItem item : bookmarkItems) {
+            if (item.getItemKey().equals(itemKey) && item.getLinkedBookmark() == null) {
                 // 建立映射
-                bi.setLinkedBookmark(bookmark);
-                jeiBookmarkMap.put(bookmark, bi);
-                return bi;
+                item.setLinkedBookmark(bookmark);
+                jeiBookmarkMap.put(bookmark, item);
+                JEIEnhancements.LOGGER.debug("Linked bookmark {} to group {}", itemKey, item.getGroupId());
+                return;
             }
         }
         
-        return null;
+        // 没有找到匹配的BookmarkItem，这是一个新的普通书签
+        // 不需要特殊处理，JEI会正常添加
+    }
+    
+    // 标记是否已加载
+    private boolean loaded = false;
+    
+    /**
+     * 确保数据已加载（懒加载）- 公开方法供mixin调用
+     */
+    public void ensureLoaded() {
+        if (!loaded) {
+            load();
+            loaded = true;
+        }
+    }
+    
+    /**
+     * 清除所有JEI书签映射（不清除BookmarkItem数据）
+     */
+    public void clearMappings() {
+        jeiBookmarkMap.clear();
+        for (BookmarkItem item : bookmarkItems) {
+            item.setLinkedBookmark(null);
+        }
+    }
+    
+    /**
+     * 建立JEI书签到BookmarkItem的映射
+     */
+    public void linkBookmark(IBookmark bookmark, BookmarkItem item) {
+        jeiBookmarkMap.put(bookmark, item);
     }
     
     /**
@@ -338,7 +389,10 @@ public class BookmarkManager {
     public void load() {
         try {
             Path savePath = getSaveFilePath();
-            if (!Files.exists(savePath)) return;
+            if (!Files.exists(savePath)) {
+                loaded = true;
+                return;
+            }
             
             String json = Files.readString(savePath, StandardCharsets.UTF_8);
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
@@ -386,11 +440,13 @@ public class BookmarkManager {
             }
             
             dirty = false;
+            loaded = true;
             JEIEnhancements.LOGGER.info("Loaded bookmark data: {} items in {} groups", 
                     bookmarkItems.size(), groups.size());
             
         } catch (Exception e) {
             JEIEnhancements.LOGGER.error("Failed to load bookmark data", e);
+            loaded = true;
         }
     }
     
@@ -408,6 +464,7 @@ public class BookmarkManager {
         jeiBookmarkMap.clear();
         groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
         nextGroupId = 1;
+        loaded = false;
         markDirty();
     }
 }

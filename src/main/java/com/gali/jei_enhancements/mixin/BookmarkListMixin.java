@@ -3,18 +3,25 @@ package com.gali.jei_enhancements.mixin;
 import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
+import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.overlay.IIngredientGridSource.SourceListChangedListener;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -50,6 +57,105 @@ public class BookmarkListMixin {
     }
     
     /**
+     * 拦截add方法
+     * 当JEI加载书签时，尝试与我们保存的BookmarkItem建立映射
+     */
+    @Inject(method = "add", at = @At("HEAD"))
+    private void onAdd(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        // 尝试将新添加的JEI书签与已保存的BookmarkItem关联
+        manager.tryLinkBookmark(bookmark);
+    }
+    
+    /**
+     * 拦截setFromConfigFile方法
+     * JEI从配置文件加载书签后，我们需要根据BookmarkManager的数据恢复重复的书签
+     */
+    @Inject(method = "setFromConfigFile", at = @At("TAIL"))
+    private void onSetFromConfigFile(List<IBookmark> bookmarks, CallbackInfo ci) {
+        JEIEnhancements.LOGGER.info("JEI loaded {} bookmarks from config, restoring duplicates...", bookmarks.size());
+        
+        BookmarkManager manager = BookmarkManager.getInstance();
+        manager.ensureLoaded();
+        
+        // 建立itemKey到JEI书签的映射（用于复制创建重复书签）
+        Map<String, IBookmark> itemKeyToBookmark = new HashMap<>();
+        for (IBookmark bookmark : bookmarksList) {
+            String itemKey = manager.getItemKey(bookmark);
+            itemKeyToBookmark.put(itemKey, bookmark);
+        }
+        
+        // 获取所有BookmarkItem，按顺序处理
+        List<BookmarkItem> allItems = manager.getAllItems();
+        
+        // 如果没有保存的书签项，不需要处理
+        if (allItems.isEmpty()) {
+            return;
+        }
+        
+        // 清空当前映射，重新建立
+        manager.clearMappings();
+        
+        // 清空JEI的书签列表，重新按我们的顺序添加
+        bookmarksList.clear();
+        bookmarksSet.clear();
+        
+        // 按BookmarkItem的顺序重新添加书签
+        // 对于重复的物品，需要创建新的书签实例
+        for (BookmarkItem item : allItems) {
+            IBookmark templateBookmark = itemKeyToBookmark.get(item.getItemKey());
+            if (templateBookmark != null) {
+                // 为每个BookmarkItem创建独立的书签实例
+                IBookmark newBookmark = jei_enhancements$cloneBookmark(templateBookmark);
+                if (newBookmark != null) {
+                    // 直接添加到列表（不检查重复）
+                    bookmarksList.add(newBookmark);
+                    bookmarksSet.add(newBookmark);
+                    
+                    // 建立映射
+                    item.setLinkedBookmark(newBookmark);
+                    manager.linkBookmark(newBookmark, item);
+                    
+                    JEIEnhancements.LOGGER.debug("Restored bookmark: {} -> group {}", item.getItemKey(), item.getGroupId());
+                }
+            } else {
+                JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
+            }
+        }
+        
+        JEIEnhancements.LOGGER.info("Restored {} bookmarks with groups", bookmarksList.size());
+    }
+    
+    /**
+     * 克隆一个书签，创建新的实例
+     * 这样同一物品可以有多个独立的书签实例
+     */
+    @Unique
+    private IBookmark jei_enhancements$cloneBookmark(IBookmark original) {
+        try {
+            if (original instanceof IngredientBookmark<?> ingredientBookmark) {
+                // 使用反射创建新实例
+                ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
+                
+                // 获取uid字段
+                java.lang.reflect.Field uidField = IngredientBookmark.class.getDeclaredField("uid");
+                uidField.setAccessible(true);
+                Object uid = uidField.get(ingredientBookmark);
+                
+                // 使用反射调用构造函数
+                java.lang.reflect.Constructor<?> constructor = IngredientBookmark.class.getDeclaredConstructor(
+                        ITypedIngredient.class, Object.class);
+                constructor.setAccessible(true);
+                
+                return (IBookmark) constructor.newInstance(ingredient, uid);
+            }
+        } catch (Exception e) {
+            JEIEnhancements.LOGGER.error("Failed to clone bookmark", e);
+        }
+        return original;
+    }
+    
+    /**
      * 拦截remove方法
      * 
      * 问题：JEI的remove使用equals()来匹配书签，但同一物品的不同实例equals相等。
@@ -71,11 +177,11 @@ public class BookmarkListMixin {
             // 检查是否是组头（RESULT类型）
             if (item.getType() == BookmarkItem.BookmarkItemType.RESULT) {
                 // 删除整个组的所有JEI书签
-                removed = removeEntireGroup(manager, item.getGroupId());
+                removed = jei_enhancements$removeEntireGroup(manager, item.getGroupId());
                 JEIEnhancements.LOGGER.debug("Removed entire group {} from JEI", item.getGroupId());
             } else {
                 // 只删除这个单独的书签
-                removed = removeBookmarkByIdentity(bookmark);
+                removed = jei_enhancements$removeBookmarkByIdentity(bookmark);
                 // 通知BookmarkManager删除单个书签
                 manager.onBookmarkRemoved(bookmark);
                 JEIEnhancements.LOGGER.debug("Removed single bookmark by identity");
@@ -83,7 +189,7 @@ public class BookmarkListMixin {
             
             // 通知监听器刷新UI
             if (removed) {
-                notifyListeners();
+                jei_enhancements$notifyListeners();
             }
             
             // 取消原始方法，返回是否成功删除
@@ -98,7 +204,8 @@ public class BookmarkListMixin {
     /**
      * 通知所有监听器刷新UI
      */
-    private void notifyListeners() {
+    @Unique
+    private void jei_enhancements$notifyListeners() {
         for (SourceListChangedListener listener : listeners) {
             listener.onSourceListChanged();
         }
@@ -107,7 +214,8 @@ public class BookmarkListMixin {
     /**
      * 按对象引用删除单个书签
      */
-    private boolean removeBookmarkByIdentity(IBookmark bookmark) {
+    @Unique
+    private boolean jei_enhancements$removeBookmarkByIdentity(IBookmark bookmark) {
         // 从bookmarksList中按引用删除（不是equals）
         boolean removedFromList = false;
         Iterator<IBookmark> listIterator = bookmarksList.iterator();
@@ -136,7 +244,8 @@ public class BookmarkListMixin {
     /**
      * 删除整个组的所有JEI书签
      */
-    private boolean removeEntireGroup(BookmarkManager manager, int groupId) {
+    @Unique
+    private boolean jei_enhancements$removeEntireGroup(BookmarkManager manager, int groupId) {
         // 获取该组的所有BookmarkItem
         List<BookmarkItem> groupItems = manager.getGroupItems(groupId);
         boolean anyRemoved = false;
