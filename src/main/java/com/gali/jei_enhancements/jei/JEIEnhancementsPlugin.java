@@ -2,6 +2,7 @@ package com.gali.jei_enhancements.jei;
 
 import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
+import com.gali.jei_enhancements.event.BookmarkLayoutClickHandler;
 import com.gali.jei_enhancements.event.BookmarkScrollHandler;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
@@ -43,6 +44,7 @@ public class JEIEnhancementsPlugin implements IModPlugin {
         codecHelper = helpers.getCodecHelper();
         
         BookmarkScrollHandler.setJeiRuntime(runtime);
+        BookmarkLayoutClickHandler.setJeiRuntime(runtime);
         
         // 加载保存的书签数量数据
         BookmarkQuantityManager.getInstance().load();
@@ -60,6 +62,7 @@ public class JEIEnhancementsPlugin implements IModPlugin {
         codecHelper = null;
         
         BookmarkScrollHandler.setJeiRuntime(null);
+        BookmarkLayoutClickHandler.setJeiRuntime(null);
         JEIEnhancements.LOGGER.info("JEI Enhancements: JEI Runtime unavailable");
     }
 
