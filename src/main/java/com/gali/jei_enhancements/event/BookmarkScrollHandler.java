@@ -87,6 +87,9 @@ public class BookmarkScrollHandler {
 
         // 调整数量
         BookmarkQuantityManager.getInstance().adjustQuantity(bookmark, delta);
+        
+        // 保存数据
+        BookmarkQuantityManager.getInstance().save();
 
         // 取消事件，防止JEI的默认滚轮行为
         event.setCanceled(true);

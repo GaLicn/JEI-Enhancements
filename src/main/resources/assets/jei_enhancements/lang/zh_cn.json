@@ -1,5 +1,7 @@
 {
   "jei_enhancements.tooltip.ctrl_scroll": "Ctrl + 滚轮: 调整书签数量",
   "jei_enhancements.tooltip.ctrl_shift_scroll": "Ctrl + Shift + 滚轮: 调整数量 (x64)",
-  "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + 滚轮: 调整数量 (x10)"
+  "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + 滚轮: 调整数量 (x10)",
+  "jei_enhancements.tooltip.shift_a": "Shift + A: 添加配方（输出+原材料）到书签",
+  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: 添加配方并保留物品数量到书签"
 }

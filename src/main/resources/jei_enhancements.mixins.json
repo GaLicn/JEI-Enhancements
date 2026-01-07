@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "BookmarkOverlayMixin"
+    "BookmarkOverlayMixin",
+    "RecipesGuiMixin"
   ],
   "injectors": {
     "defaultRequire": 1
