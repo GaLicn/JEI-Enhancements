@@ -5,6 +5,7 @@ import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
+import mezz.jei.gui.overlay.IIngredientGridSource.SourceListChangedListener;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -32,6 +33,9 @@ public class BookmarkListMixin {
     
     @Shadow @Final
     private List<IBookmark> bookmarksList;
+    
+    @Shadow @Final
+    private List<SourceListChangedListener> listeners;
     
     /**
      * 拦截contains方法
@@ -77,12 +81,26 @@ public class BookmarkListMixin {
                 JEIEnhancements.LOGGER.debug("Removed single bookmark by identity");
             }
             
+            // 通知监听器刷新UI
+            if (removed) {
+                notifyListeners();
+            }
+            
             // 取消原始方法，返回是否成功删除
             cir.setReturnValue(removed);
         } else {
             // 不是我们管理的书签，让JEI正常处理
             // 但仍然通知manager（以防万一）
             manager.onBookmarkRemoved(bookmark);
+        }
+    }
+    
+    /**
+     * 通知所有监听器刷新UI
+     */
+    private void notifyListeners() {
+        for (SourceListChangedListener listener : listeners) {
+            listener.onSourceListChanged();
         }
     }
     
