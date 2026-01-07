@@ -3,6 +3,9 @@
   "package": "com.gali.jei_enhancements.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
+  "client": [
+    "BookmarkOverlayMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },
