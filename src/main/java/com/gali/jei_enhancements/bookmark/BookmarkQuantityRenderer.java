@@ -15,59 +15,14 @@ import java.util.Optional;
 
 /**
  * 渲染书签的自定义数量和NEI风格的分组效果
- * - 自定义数量：通过Ctrl+滚轮设置
- * - 分组效果：背景色、边框、折叠指示器
  */
 public class BookmarkQuantityRenderer {
     
     // NEI风格的颜色
-    private static final int COLLAPSED_BG_COLOR = 0x40404080;  // 折叠状态背景色
-    private static final int EXPANDED_BG_COLOR = 0x30408040;   // 展开状态背景色
-    private static final int GROUP_BORDER_COLOR = 0x80808080;  // 组边框颜色
+    private static final int GROUP_BG_COLOR = 0x30408040;      // 组背景色（绿色半透明）
+    private static final int GROUP_BORDER_COLOR = 0x80408040;  // 组边框颜色
     private static final int COLLAPSED_INDICATOR_COLOR = 0xFFFFFF55; // 折叠指示器颜色（黄色）
 
-    /**
-     * 渲染所有书签的自定义数量和分组效果
-     */
-    public static void renderQuantities(GuiGraphics guiGraphics, IngredientGridWithNavigation contents, BookmarkList bookmarkList) {
-        BookmarkQuantityManager manager = BookmarkQuantityManager.getInstance();
-        
-        // 如果没有任何自定义数量，不需要渲染
-        if (!manager.hasAnyCustomQuantity()) {
-            return;
-        }
-        
-        Font font = Minecraft.getInstance().font;
-        
-        // 第一遍：收集分组信息，用于绘制边框
-        Map<RecipeBookmarkGroup, GroupRenderInfo> groupInfoMap = new HashMap<>();
-        
-        contents.getSlots().forEach(slot -> {
-            IElement<?> element = slot.getElement();
-            if (element == null) return;
-            
-            Optional<IBookmark> bookmarkOpt = element.getBookmark();
-            if (bookmarkOpt.isEmpty()) return;
-            
-            RecipeBookmarkGroup group = manager.getGroup(bookmarkOpt.get());
-            if (group != null && group.size() > 1) {
-                var area = slot.getRenderArea();
-                GroupRenderInfo info = groupInfoMap.computeIfAbsent(group, g -> new GroupRenderInfo());
-                info.addSlot(area.x(), area.y(), area.width(), area.height());
-            }
-        });
-        
-        // 第二遍：渲染分组背景和边框
-        groupInfoMap.forEach((group, info) -> {
-            renderGroupBackground(guiGraphics, group, info);
-        });
-        
-        // 第三遍：渲染数量和折叠指示器
-        contents.getSlots().forEach(slot -> {
-            renderSlotQuantity(guiGraphics, font, slot, manager);
-        });
-    }
-    
     /**
      * 分组渲染信息
      */
@@ -86,30 +41,76 @@ public class BookmarkQuantityRenderer {
             slotCount++;
         }
     }
+
+    /**
+     * 渲染所有书签的自定义数量和分组效果
+     */
+    public static void renderQuantities(GuiGraphics guiGraphics, IngredientGridWithNavigation contents, BookmarkList bookmarkList) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        
+        // 如果没有任何书签项，不需要渲染
+        if (manager.getAllItems().isEmpty()) {
+            return;
+        }
+        
+        Font font = Minecraft.getInstance().font;
+        
+        // 第一遍：收集分组信息
+        Map<Integer, GroupRenderInfo> groupInfoMap = new HashMap<>();
+        
+        contents.getSlots().forEach(slot -> {
+            IElement<?> element = slot.getElement();
+            if (element == null) return;
+            
+            Optional<IBookmark> bookmarkOpt = element.getBookmark();
+            if (bookmarkOpt.isEmpty()) return;
+            
+            BookmarkItem item = manager.findBookmarkItem(bookmarkOpt.get());
+            if (item == null) return;
+            
+            int groupId = item.getGroupId();
+            // 只有非默认组且组内有多个物品才显示背景
+            if (groupId != BookmarkManager.DEFAULT_GROUP_ID) {
+                int groupSize = manager.getGroupItems(groupId).size();
+                if (groupSize > 1) {
+                    var area = slot.getRenderArea();
+                    GroupRenderInfo info = groupInfoMap.computeIfAbsent(groupId, g -> new GroupRenderInfo());
+                    info.addSlot(area.x(), area.y(), area.width(), area.height());
+                }
+            }
+        });
+        
+        // 第二遍：渲染分组背景
+        groupInfoMap.forEach((groupId, info) -> {
+            if (info.slotCount > 0) {
+                renderGroupBackground(guiGraphics, info);
+            }
+        });
+        
+        // 第三遍：渲染数量
+        contents.getSlots().forEach(slot -> {
+            renderSlotQuantity(guiGraphics, font, slot, manager);
+        });
+    }
     
     /**
-     * 渲染分组背景（NEI风格）
+     * 渲染分组背景
      */
-    private static void renderGroupBackground(GuiGraphics guiGraphics, RecipeBookmarkGroup group, GroupRenderInfo info) {
-        if (info.slotCount <= 1) return;
-        
-        int bgColor = group.isExpanded() ? EXPANDED_BG_COLOR : COLLAPSED_BG_COLOR;
-        
+    private static void renderGroupBackground(GuiGraphics guiGraphics, GroupRenderInfo info) {
         // 绘制背景
-        guiGraphics.fill(info.minX - 1, info.minY - 1, info.maxX + 1, info.maxY + 1, bgColor);
+        guiGraphics.fill(info.minX - 1, info.minY - 1, info.maxX + 1, info.maxY + 1, GROUP_BG_COLOR);
         
         // 绘制边框
-        int borderColor = GROUP_BORDER_COLOR;
-        guiGraphics.fill(info.minX - 1, info.minY - 1, info.maxX + 1, info.minY, borderColor); // 上
-        guiGraphics.fill(info.minX - 1, info.maxY, info.maxX + 1, info.maxY + 1, borderColor); // 下
-        guiGraphics.fill(info.minX - 1, info.minY, info.minX, info.maxY, borderColor); // 左
-        guiGraphics.fill(info.maxX, info.minY, info.maxX + 1, info.maxY, borderColor); // 右
+        guiGraphics.fill(info.minX - 1, info.minY - 1, info.maxX + 1, info.minY, GROUP_BORDER_COLOR); // 上
+        guiGraphics.fill(info.minX - 1, info.maxY, info.maxX + 1, info.maxY + 1, GROUP_BORDER_COLOR); // 下
+        guiGraphics.fill(info.minX - 1, info.minY, info.minX, info.maxY, GROUP_BORDER_COLOR); // 左
+        guiGraphics.fill(info.maxX, info.minY, info.maxX + 1, info.maxY, GROUP_BORDER_COLOR); // 右
     }
     
     /**
      * 渲染单个槽位的数量
      */
-    private static void renderSlotQuantity(GuiGraphics guiGraphics, Font font, IngredientListSlot slot, BookmarkQuantityManager manager) {
+    private static void renderSlotQuantity(GuiGraphics guiGraphics, Font font, IngredientListSlot slot, BookmarkManager manager) {
         IElement<?> element = slot.getElement();
         if (element == null) {
             return;
@@ -121,19 +122,26 @@ public class BookmarkQuantityRenderer {
         }
         
         IBookmark bookmark = bookmarkOpt.get();
-        RecipeBookmarkGroup group = manager.getGroup(bookmark);
         
-        // 渲染折叠指示器（NEI风格：折叠时在左上角显示组大小）
-        if (group != null && !group.isExpanded() && group.size() > 1) {
-            renderCollapsedIndicator(guiGraphics, font, slot, group);
-        }
-        
-        // 只渲染有自定义数量的书签
-        if (!manager.hasCustomQuantity(bookmark)) {
+        // 查找对应的BookmarkItem
+        BookmarkItem item = manager.findBookmarkItem(bookmark);
+        if (item == null) {
             return;
         }
         
-        int quantity = manager.getQuantity(bookmark);
+        // 获取组信息
+        BookmarkGroup group = manager.getGroup(item.getGroupId());
+        
+        // 渲染折叠指示器（NEI风格：折叠时在左上角显示组大小）
+        if (group != null && !group.isExpanded()) {
+            int groupSize = manager.getGroupItems(item.getGroupId()).size();
+            if (groupSize > 1 && item.isOutput()) {
+                renderCollapsedIndicator(guiGraphics, font, slot, groupSize);
+            }
+        }
+        
+        // 获取计算后的数量
+        int quantity = manager.getQuantity(item);
         if (quantity <= 0) {
             return;
         }
@@ -145,14 +153,14 @@ public class BookmarkQuantityRenderer {
         int x = area.x();
         int y = area.y();
         
-        // 在右下角渲染数量，类似于物品堆叠数量的显示
+        // 在右下角渲染数量
         int textWidth = font.width(quantityStr);
         int textX = x + 17 - textWidth;
         int textY = y + 9;
         
         // 绘制阴影文字
         guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(0, 0, 200); // 确保在物品上方渲染
+        guiGraphics.pose().translate(0, 0, 200);
         
         // 绘制阴影
         guiGraphics.drawString(font, quantityStr, textX + 1, textY + 1, 0x3F3F3F, false);
@@ -163,20 +171,18 @@ public class BookmarkQuantityRenderer {
     }
     
     /**
-     * 渲染折叠指示器（NEI风格）
-     * 在左上角显示组内物品数量
+     * 渲染折叠指示器
      */
-    private static void renderCollapsedIndicator(GuiGraphics guiGraphics, Font font, IngredientListSlot slot, RecipeBookmarkGroup group) {
+    private static void renderCollapsedIndicator(GuiGraphics guiGraphics, Font font, IngredientListSlot slot, int groupSize) {
         var area = slot.getRenderArea();
         int x = area.x();
         int y = area.y();
         
-        String indicator = "+" + (group.size() - 1);
+        String indicator = "+" + (groupSize - 1);
         
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(0, 0, 200);
         
-        // 在左上角绘制折叠指示器
         guiGraphics.drawString(font, indicator, x + 1, y + 1, 0x3F3F3F, false);
         guiGraphics.drawString(font, indicator, x, y, COLLAPSED_INDICATOR_COLOR, false);
         

@@ -1,7 +1,7 @@
 package com.gali.jei_enhancements.jei;
 
 import com.gali.jei_enhancements.JEIEnhancements;
-import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.event.BookmarkLayoutClickHandler;
 import com.gali.jei_enhancements.event.BookmarkScrollHandler;
 import mezz.jei.api.IModPlugin;
@@ -46,16 +46,16 @@ public class JEIEnhancementsPlugin implements IModPlugin {
         BookmarkScrollHandler.setJeiRuntime(runtime);
         BookmarkLayoutClickHandler.setJeiRuntime(runtime);
         
-        // 加载保存的书签数量数据
-        BookmarkQuantityManager.getInstance().load();
+        // 加载保存的书签数据
+        BookmarkManager.getInstance().load();
         
         JEIEnhancements.LOGGER.info("JEI Enhancements: JEI Runtime available");
     }
 
     @Override
     public void onRuntimeUnavailable() {
-        // 保存书签数量数据
-        BookmarkQuantityManager.getInstance().save();
+        // 保存书签数据
+        BookmarkManager.getInstance().save();
         
         jeiRuntime = null;
         ingredientManager = null;

@@ -1,10 +1,10 @@
 package com.gali.jei_enhancements.event;
 
 import com.gali.jei_enhancements.JEIEnhancements;
+import com.gali.jei_enhancements.bookmark.BookmarkGroup;
+import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
-import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
-import com.gali.jei_enhancements.bookmark.RecipeBookmarkGroup;
-import mezz.jei.api.ingredients.ITypedIngredient;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
@@ -115,19 +115,24 @@ public class BookmarkLayoutClickHandler {
                 return false;
             }
             
-            BookmarkQuantityManager manager = BookmarkQuantityManager.getInstance();
-            RecipeBookmarkGroup group = manager.getGroup(bookmarkOpt.get());
+            BookmarkManager manager = BookmarkManager.getInstance();
+            BookmarkItem item = manager.findBookmarkItem(bookmarkOpt.get());
             
-            if (group != null && group.size() > 1) {
-                // 切换展开/折叠状态
-                manager.toggleGroupExpanded(group);
-                manager.save();
+            if (item != null) {
+                BookmarkGroup group = manager.getGroup(item.getGroupId());
+                int groupSize = manager.getGroupItems(item.getGroupId()).size();
                 
-                // 刷新显示
-                forceRefreshBookmarks(overlay);
-                
-                JEIEnhancements.LOGGER.debug("Toggled group expanded: {}", group.isExpanded());
-                return true;
+                if (group != null && groupSize > 1) {
+                    // 切换展开/折叠状态
+                    group.toggleExpanded();
+                    manager.save();
+                    
+                    // 刷新显示
+                    forceRefreshBookmarks(overlay);
+                    
+                    JEIEnhancements.LOGGER.debug("Toggled group {} expanded: {}", item.getGroupId(), group.isExpanded());
+                    return true;
+                }
             }
             
         } catch (Exception e) {

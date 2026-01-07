@@ -1,9 +1,10 @@
 package com.gali.jei_enhancements.mixin;
 
 import com.gali.jei_enhancements.JEIEnhancements;
+import com.gali.jei_enhancements.bookmark.BookmarkGroup;
+import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
-import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
-import com.gali.jei_enhancements.bookmark.RecipeBookmarkGroup;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.ingredients.IIngredientType;
 import mezz.jei.api.ingredients.rendering.BatchRenderElement;
@@ -20,8 +21,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 修改IngredientListRenderer的set方法
@@ -52,7 +55,6 @@ public abstract class IngredientListRendererMixin {
         }
         
         // 检查是否是书签列表（通过检查元素是否有书签信息）
-        // 右边的物品列表不会有书签信息，只有左边的书签列表才有
         boolean isBookmarkList = false;
         for (int i = startIndex; i < ingredientList.size() && i < startIndex + 5; i++) {
             IElement<?> element = ingredientList.get(i);
@@ -63,12 +65,10 @@ public abstract class IngredientListRendererMixin {
         }
         
         if (!isBookmarkList) {
-            // 不是书签列表，使用默认布局
             return;
         }
 
-        JEIEnhancements.LOGGER.debug("=== IngredientListRendererMixin.onSet (VERTICAL MODE - BOOKMARK LIST) ===");
-        JEIEnhancements.LOGGER.debug("startIndex={}, ingredientList.size={}", startIndex, ingredientList.size());
+        JEIEnhancements.LOGGER.debug("=== IngredientListRendererMixin.onSet (VERTICAL MODE) ===");
 
         List<IngredientListSlot> activeSlots = new ArrayList<>();
         for (IngredientListSlot slot : slots) {
@@ -97,8 +97,6 @@ public abstract class IngredientListRendererMixin {
         int slotHeight = activeSlots.get(0).getArea().getHeight();
         int columns = (maxX - minX) / slotWidth + 1;
         int rows = (maxY - minY) / slotHeight + 1;
-        
-        JEIEnhancements.LOGGER.debug("Grid: columns={}, rows={}, activeSlots={}", columns, rows, activeSlots.size());
 
         blocked = 0;
         renderElementsByType.clear();
@@ -114,11 +112,6 @@ public abstract class IngredientListRendererMixin {
         }
 
         List<List<IElement<?>>> groupedElements = groupElements(ingredientList, startIndex);
-        
-        JEIEnhancements.LOGGER.debug("Grouped into {} groups", groupedElements.size());
-        for (int g = 0; g < groupedElements.size(); g++) {
-            JEIEnhancements.LOGGER.debug("  Group {}: {} elements", g, groupedElements.get(g).size());
-        }
         
         int currentRow = 0;
         int currentCol = 0;
@@ -170,16 +163,17 @@ public abstract class IngredientListRendererMixin {
         ci.cancel();
     }
     
+    /**
+     * 按组分组元素（NEI风格）
+     */
     private List<List<IElement<?>>> groupElements(List<IElement<?>> ingredientList, int startIndex) {
         List<List<IElement<?>>> result = new ArrayList<>();
-        BookmarkQuantityManager manager = BookmarkQuantityManager.getInstance();
+        BookmarkManager manager = BookmarkManager.getInstance();
         
-        // 用于跟踪已处理的组（使用对象引用）
-        java.util.Set<RecipeBookmarkGroup> processedGroups = new java.util.HashSet<>();
+        // 用于跟踪已处理的组ID
+        Set<Integer> processedGroupIds = new HashSet<>();
         // 用于跟踪已处理的元素索引
-        java.util.Set<Integer> processedIndices = new java.util.HashSet<>();
-        
-        JEIEnhancements.LOGGER.debug("groupElements: startIndex={}, listSize={}", startIndex, ingredientList.size());
+        Set<Integer> processedIndices = new HashSet<>();
         
         for (int i = startIndex; i < ingredientList.size(); i++) {
             if (processedIndices.contains(i)) {
@@ -193,71 +187,79 @@ public abstract class IngredientListRendererMixin {
             }
             
             Optional<IBookmark> bookmarkOpt = element.getBookmark();
-            RecipeBookmarkGroup elementGroup = null;
-            
-            if (bookmarkOpt.isPresent()) {
-                elementGroup = manager.getGroup(bookmarkOpt.get());
-            }
-            
-            if (elementGroup == null) {
-                // 单独的书签，作为一个单元素组
+            if (bookmarkOpt.isEmpty()) {
+                // 没有书签信息，作为单独元素
                 List<IElement<?>> singleGroup = new ArrayList<>();
                 singleGroup.add(element);
                 result.add(singleGroup);
                 processedIndices.add(i);
-            } else {
-                // 属于某个组
-                if (processedGroups.contains(elementGroup)) {
-                    // 这个组已经处理过了，跳过
-                    processedIndices.add(i);
-                    continue;
-                }
-                
-                // NEI风格：根据展开状态决定显示方式
-                List<IElement<?>> groupElements = new ArrayList<>();
-                
-                if (elementGroup.isExpanded()) {
-                    // 展开状态：收集这个组的所有元素
-                    for (int j = startIndex; j < ingredientList.size(); j++) {
-                        IElement<?> otherElement = ingredientList.get(j);
-                        if (!otherElement.isVisible()) {
-                            continue;
-                        }
-                        
-                        Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
-                        if (otherBookmarkOpt.isPresent()) {
-                            RecipeBookmarkGroup otherGroup = manager.getGroup(otherBookmarkOpt.get());
-                            // 使用对象引用比较
-                            if (otherGroup == elementGroup) {
-                                groupElements.add(otherElement);
-                                processedIndices.add(j);
-                            }
-                        }
-                    }
-                } else {
-                    // 折叠状态：只显示第一个元素（输出物品）
-                    groupElements.add(element);
-                    processedIndices.add(i);
-                    
-                    // 标记其他成员为已处理（不显示）
-                    for (int j = startIndex; j < ingredientList.size(); j++) {
-                        if (j == i) continue;
-                        IElement<?> otherElement = ingredientList.get(j);
-                        Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
-                        if (otherBookmarkOpt.isPresent()) {
-                            RecipeBookmarkGroup otherGroup = manager.getGroup(otherBookmarkOpt.get());
-                            if (otherGroup == elementGroup) {
-                                processedIndices.add(j);
-                            }
-                        }
-                    }
-                }
-                
-                if (!groupElements.isEmpty()) {
-                    result.add(groupElements);
-                }
-                processedGroups.add(elementGroup);
+                continue;
             }
+            
+            BookmarkItem item = manager.findBookmarkItem(bookmarkOpt.get());
+            
+            if (item == null) {
+                // 没有在BookmarkManager中找到，作为单独元素
+                List<IElement<?>> singleGroup = new ArrayList<>();
+                singleGroup.add(element);
+                result.add(singleGroup);
+                processedIndices.add(i);
+                continue;
+            }
+            
+            int groupId = item.getGroupId();
+            
+            if (processedGroupIds.contains(groupId)) {
+                // 这个组已经处理过了
+                processedIndices.add(i);
+                continue;
+            }
+            
+            BookmarkGroup group = manager.getGroup(groupId);
+            List<IElement<?>> groupElements = new ArrayList<>();
+            
+            if (group != null && !group.isExpanded()) {
+                // 折叠状态：只显示输出物品
+                if (item.isOutput()) {
+                    groupElements.add(element);
+                }
+                processedIndices.add(i);
+                
+                // 标记同组其他成员为已处理
+                for (int j = startIndex; j < ingredientList.size(); j++) {
+                    if (j == i) continue;
+                    IElement<?> otherElement = ingredientList.get(j);
+                    Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
+                    if (otherBookmarkOpt.isPresent()) {
+                        BookmarkItem otherItem = manager.findBookmarkItem(otherBookmarkOpt.get());
+                        if (otherItem != null && otherItem.getGroupId() == groupId) {
+                            processedIndices.add(j);
+                        }
+                    }
+                }
+            } else {
+                // 展开状态：收集这个组的所有元素
+                for (int j = startIndex; j < ingredientList.size(); j++) {
+                    IElement<?> otherElement = ingredientList.get(j);
+                    if (!otherElement.isVisible()) {
+                        continue;
+                    }
+                    
+                    Optional<IBookmark> otherBookmarkOpt = otherElement.getBookmark();
+                    if (otherBookmarkOpt.isPresent()) {
+                        BookmarkItem otherItem = manager.findBookmarkItem(otherBookmarkOpt.get());
+                        if (otherItem != null && otherItem.getGroupId() == groupId) {
+                            groupElements.add(otherElement);
+                            processedIndices.add(j);
+                        }
+                    }
+                }
+            }
+            
+            if (!groupElements.isEmpty()) {
+                result.add(groupElements);
+            }
+            processedGroupIds.add(groupId);
         }
         
         return result;

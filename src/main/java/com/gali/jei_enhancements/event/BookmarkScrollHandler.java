@@ -1,6 +1,7 @@
 package com.gali.jei_enhancements.event;
 
-import com.gali.jei_enhancements.bookmark.BookmarkQuantityManager;
+import com.gali.jei_enhancements.bookmark.BookmarkItem;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.gui.bookmarks.IBookmark;
@@ -72,9 +73,16 @@ public class BookmarkScrollHandler {
         }
 
         IBookmark bookmark = bookmarkOpt.get();
+        BookmarkManager manager = BookmarkManager.getInstance();
+        
+        // 查找对应的BookmarkItem
+        BookmarkItem item = manager.findBookmarkItem(bookmark);
+        if (item == null) {
+            return;
+        }
 
         // 计算调整量
-        int delta = (int) Math.signum(scrollDelta);
+        double delta = Math.signum(scrollDelta);
 
         // 如果同时按住Shift，则以更大的步进调整 (64)
         if (Screen.hasShiftDown()) {
@@ -85,11 +93,11 @@ public class BookmarkScrollHandler {
             delta *= 10;
         }
 
-        // 调整数量
-        BookmarkQuantityManager.getInstance().adjustQuantity(bookmark, delta);
+        // 调整组的倍率
+        manager.adjustGroupMultiplier(item.getGroupId(), delta);
         
         // 保存数据
-        BookmarkQuantityManager.getInstance().save();
+        manager.save();
 
         // 取消事件，防止JEI的默认滚轮行为
         event.setCanceled(true);

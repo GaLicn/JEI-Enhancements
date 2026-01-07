@@ -6,7 +6,8 @@
   "client": [
     "BookmarkOverlayMixin",
     "RecipesGuiMixin",
-    "IngredientListRendererMixin"
+    "IngredientListRendererMixin",
+    "BookmarkListMixin"
   ],
   "injectors": {
     "defaultRequire": 1
