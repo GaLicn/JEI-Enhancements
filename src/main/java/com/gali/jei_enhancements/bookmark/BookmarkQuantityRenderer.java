@@ -8,6 +8,7 @@ import mezz.jei.gui.overlay.elements.IElement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +23,10 @@ public class BookmarkQuantityRenderer {
     private static final int GROUP_BG_COLOR = 0x30408040;      // 组背景色（绿色半透明）
     private static final int GROUP_BORDER_COLOR = 0x80408040;  // 组边框颜色
     private static final int COLLAPSED_INDICATOR_COLOR = 0xFFFFFF55; // 折叠指示器颜色（黄色）
+    
+    // Ctrl按下时的颜色
+    private static final int RESULT_BG_COLOR = 0x604040FF;     // 组头背景色（蓝色半透明）
+    private static final int INGREDIENT_BG_COLOR = 0x60AA40AA; // 组员背景色（紫色半透明）
 
     /**
      * 分组渲染信息
@@ -87,10 +92,53 @@ public class BookmarkQuantityRenderer {
             }
         });
         
-        // 第三遍：渲染数量
+        // 第三遍：如果按住Ctrl，渲染每个书签的类型背景色
+        boolean ctrlPressed = Screen.hasControlDown();
+        if (ctrlPressed) {
+            contents.getSlots().forEach(slot -> {
+                renderCtrlBackground(guiGraphics, slot, manager);
+            });
+        }
+        
+        // 第四遍：渲染数量
         contents.getSlots().forEach(slot -> {
             renderSlotQuantity(guiGraphics, font, slot, manager);
         });
+    }
+    
+    /**
+     * 渲染Ctrl按下时的背景色
+     * 组头（RESULT）显示蓝色，组员（INGREDIENT）显示紫色
+     */
+    private static void renderCtrlBackground(GuiGraphics guiGraphics, IngredientListSlot slot, BookmarkManager manager) {
+        IElement<?> element = slot.getElement();
+        if (element == null) return;
+        
+        Optional<IBookmark> bookmarkOpt = element.getBookmark();
+        if (bookmarkOpt.isEmpty()) return;
+        
+        BookmarkItem item = manager.findBookmarkItem(bookmarkOpt.get());
+        if (item == null) return;
+        
+        // 只有非默认组的书签才显示背景色
+        if (item.getGroupId() == BookmarkManager.DEFAULT_GROUP_ID) return;
+        
+        var area = slot.getRenderArea();
+        int x = area.x();
+        int y = area.y();
+        int width = area.width();
+        int height = area.height();
+        
+        int bgColor;
+        if (item.getType() == BookmarkItem.BookmarkItemType.RESULT) {
+            bgColor = RESULT_BG_COLOR;  // 蓝色 - 组头
+        } else if (item.getType() == BookmarkItem.BookmarkItemType.INGREDIENT) {
+            bgColor = INGREDIENT_BG_COLOR;  // 紫色 - 组员
+        } else {
+            return;  // 普通物品不显示
+        }
+        
+        guiGraphics.fill(x, y, x + width, y + height, bgColor);
     }
     
     /**
