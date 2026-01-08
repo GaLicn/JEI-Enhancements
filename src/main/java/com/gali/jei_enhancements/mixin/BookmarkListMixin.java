@@ -260,8 +260,8 @@ public class BookmarkListMixin {
             
             // 检查是否是组头（RESULT类型）
             if (item.getType() == BookmarkItem.BookmarkItemType.RESULT) {
-                // 删除整个组的所有JEI书签
-                removed = jei_enhancements$removeEntireGroup(manager, item.getGroupId());
+                // 只删除这个配方（RESULT+它的INGREDIENT），不是整个组
+                removed = jei_enhancements$removeRecipe(manager, item);
             } else {
                 // 只删除这个单独的书签
                 removed = jei_enhancements$removeBookmarkByIdentity(bookmark);
@@ -320,6 +320,76 @@ public class BookmarkListMixin {
         }
         
         return removedFromList || removedFromSet;
+    }
+    
+    /**
+     * 删除单个配方（RESULT+它后面的INGREDIENT）
+     * 不删除整个组，只删除这个配方
+     */
+    @Unique
+    private boolean jei_enhancements$removeRecipe(BookmarkManager manager, BookmarkItem resultItem) {
+        int groupId = resultItem.getGroupId();
+        List<BookmarkItem> groupItems = manager.getGroupItems(groupId);
+        boolean anyRemoved = false;
+        
+        // 找到这个RESULT在组内的位置
+        int resultIndex = groupItems.indexOf(resultItem);
+        if (resultIndex < 0) {
+            return false;
+        }
+        
+        // 收集要删除的物品（这个RESULT + 它后面的INGREDIENT）
+        List<BookmarkItem> itemsToRemove = new java.util.ArrayList<>();
+        itemsToRemove.add(resultItem);
+        
+        // 收集紧跟在这个RESULT后面的INGREDIENT
+        for (int i = resultIndex + 1; i < groupItems.size(); i++) {
+            BookmarkItem item = groupItems.get(i);
+            if (item.isOutput()) {
+                // 遇到下一个RESULT，停止
+                break;
+            }
+            if (item.isIngredient()) {
+                itemsToRemove.add(item);
+            }
+        }
+        
+        // 从JEI中删除这些书签
+        for (BookmarkItem item : itemsToRemove) {
+            IBookmark linkedBookmark = item.getLinkedBookmark();
+            if (linkedBookmark != null) {
+                // 从JEI的列表和集合中按引用删除
+                Iterator<IBookmark> listIterator = bookmarksList.iterator();
+                while (listIterator.hasNext()) {
+                    if (listIterator.next() == linkedBookmark) {
+                        listIterator.remove();
+                        anyRemoved = true;
+                        break;
+                    }
+                }
+                
+                Iterator<IBookmark> setIterator = bookmarksSet.iterator();
+                while (setIterator.hasNext()) {
+                    if (setIterator.next() == linkedBookmark) {
+                        setIterator.remove();
+                        break;
+                    }
+                }
+            }
+            
+            // 从BookmarkManager中删除
+            manager.onBookmarkRemoved(linkedBookmark);
+        }
+        
+        // 检查组是否为空，如果为空则删除组
+        List<BookmarkItem> remainingItems = manager.getGroupItems(groupId);
+        if (remainingItems.isEmpty()) {
+            manager.removeGroupOnly(groupId);
+        }
+        
+        manager.save();
+        
+        return anyRemoved;
     }
     
     /**
