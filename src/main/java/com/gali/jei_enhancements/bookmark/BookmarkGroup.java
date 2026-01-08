@@ -1,8 +1,6 @@
 package com.gali.jei_enhancements.bookmark;
 
 /**
- * NEI风格的书签组
- * 
  * 每个组有：
  * - groupId: 唯一标识
  * - multiplier: 倍率（用于按比例调整数量）

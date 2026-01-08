@@ -45,11 +45,7 @@ public class JEIEnhancementsPlugin implements IModPlugin {
         
         BookmarkScrollHandler.setJeiRuntime(runtime);
         BookmarkLayoutClickHandler.setJeiRuntime(runtime);
-        
-        // 书签数据会在mixin的add方法中通过ensureLoaded懒加载
-        // 不需要在这里显式调用load
-        
-        JEIEnhancements.LOGGER.info("JEI Enhancements: JEI Runtime available");
+
     }
 
     @Override
@@ -63,7 +59,6 @@ public class JEIEnhancementsPlugin implements IModPlugin {
         
         BookmarkScrollHandler.setJeiRuntime(null);
         BookmarkLayoutClickHandler.setJeiRuntime(null);
-        JEIEnhancements.LOGGER.info("JEI Enhancements: JEI Runtime unavailable");
     }
 
     @Nullable

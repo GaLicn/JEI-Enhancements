@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 渲染书签的自定义数量和NEI风格的分组效果
+ * 渲染书签的自定义数量和背景色
  */
 public class BookmarkQuantityRenderer {
     

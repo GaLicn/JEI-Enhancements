@@ -26,11 +26,6 @@ import java.util.Set;
 
 /**
  * 修改JEI的BookmarkList，允许同一物品多次添加到书签
- * NEI风格：同一物品可以在不同组中独立存在
- * 
- * 关键问题：JEI的IngredientBookmark使用uid实现equals()，
- * 导致同一物品的不同实例被认为相等。
- * 我们需要基于对象引用（identity）来删除，而不是基于equals。
  */
 @Mixin(value = BookmarkList.class, remap = false)
 public class BookmarkListMixin {
@@ -58,7 +53,7 @@ public class BookmarkListMixin {
     
     /**
      * 拦截add方法
-     * 当JEI加载书签时，尝试与我们保存的BookmarkItem建立映射
+     * 当JEI加载书签时，尝试与BookmarkItem建立映射
      */
     @Inject(method = "add", at = @At("HEAD"))
     private void onAdd(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
@@ -86,14 +81,12 @@ public class BookmarkListMixin {
             // 检查是否涉及组头
             if (draggedItem != null && draggedItem.getType() == BookmarkItem.BookmarkItemType.RESULT) {
                 // 组头不能被移动
-                JEIEnhancements.LOGGER.debug("Blocked moving group header: {}", draggedItem.getItemKey());
                 ci.cancel();
                 return;
             }
             
             if (targetItem != null && targetItem.getType() == BookmarkItem.BookmarkItemType.RESULT) {
                 // 不能移动到组头的位置（替换组头）
-                JEIEnhancements.LOGGER.debug("Blocked moving to group header position: {}", targetItem.getItemKey());
                 ci.cancel();
                 return;
             }
@@ -102,8 +95,6 @@ public class BookmarkListMixin {
             if (draggedItem != null && targetItem != null) {
                 if (draggedItem.getGroupId() != targetItem.getGroupId()) {
                     // 跨组移动，取消操作
-                    JEIEnhancements.LOGGER.debug("Blocked cross-group bookmark move: {} -> {}", 
-                            draggedItem.getGroupId(), targetItem.getGroupId());
                     ci.cancel();
                     return;
                 }
@@ -136,8 +127,6 @@ public class BookmarkListMixin {
             
             // 通知监听器刷新UI
             jei_enhancements$notifyListeners();
-            
-            JEIEnhancements.LOGGER.debug("Moved bookmark from {} to {}", draggedIndex, newIndex);
             
             // 取消原始方法
             ci.cancel();
@@ -174,12 +163,11 @@ public class BookmarkListMixin {
     
     /**
      * 拦截setFromConfigFile方法
-     * JEI从配置文件加载书签后，我们需要根据BookmarkManager的数据恢复重复的书签
+     * JEI从配置文件加载书签后，需要根据BookmarkManager的数据恢复重复的书签
      */
     @Inject(method = "setFromConfigFile", at = @At("TAIL"))
     private void onSetFromConfigFile(List<IBookmark> bookmarks, CallbackInfo ci) {
-        JEIEnhancements.LOGGER.info("JEI loaded {} bookmarks from config, restoring duplicates...", bookmarks.size());
-        
+
         BookmarkManager manager = BookmarkManager.getInstance();
         manager.ensureLoaded();
         
@@ -201,7 +189,7 @@ public class BookmarkListMixin {
         // 清空当前映射，重新建立
         manager.clearMappings();
         
-        // 清空JEI的书签列表，重新按我们的顺序添加
+        // 清空JEI的书签列表，重新按顺序添加
         bookmarksList.clear();
         bookmarksSet.clear();
         
@@ -220,20 +208,16 @@ public class BookmarkListMixin {
                     // 建立映射
                     item.setLinkedBookmark(newBookmark);
                     manager.linkBookmark(newBookmark, item);
-                    
-                    JEIEnhancements.LOGGER.debug("Restored bookmark: {} -> group {}", item.getItemKey(), item.getGroupId());
                 }
             } else {
                 JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
             }
         }
-        
-        JEIEnhancements.LOGGER.info("Restored {} bookmarks with groups", bookmarksList.size());
     }
     
     /**
      * 克隆一个书签，创建新的实例
-     * 这样同一物品可以有多个独立的书签实例
+     * 使同一物品可以有多个独立的书签实例
      */
     @Unique
     private IBookmark jei_enhancements$cloneBookmark(IBookmark original) {
@@ -262,18 +246,13 @@ public class BookmarkListMixin {
     
     /**
      * 拦截remove方法
-     * 
-     * 问题：JEI的remove使用equals()来匹配书签，但同一物品的不同实例equals相等。
-     * 当两个分组有同一物品时，删除一个会错误地影响另一个。
-     * 
-     * 解决方案：完全接管remove逻辑，使用对象引用（identity）来删除特定实例。
-     * 特殊情况：如果删除的是组头（RESULT类型），则删除整个组的所有书签。
+     * 完全接管remove逻辑，使用对象引用（identity）来删除特定实例。
      */
     @Inject(method = "remove", at = @At("HEAD"), cancellable = true)
     private void onRemove(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
         
-        // 检查这个书签是否在我们的管理器中
+        // 检查这个书签是否在管理器中
         BookmarkItem item = manager.findBookmarkItem(bookmark);
         
         if (item != null) {
@@ -283,13 +262,11 @@ public class BookmarkListMixin {
             if (item.getType() == BookmarkItem.BookmarkItemType.RESULT) {
                 // 删除整个组的所有JEI书签
                 removed = jei_enhancements$removeEntireGroup(manager, item.getGroupId());
-                JEIEnhancements.LOGGER.debug("Removed entire group {} from JEI", item.getGroupId());
             } else {
                 // 只删除这个单独的书签
                 removed = jei_enhancements$removeBookmarkByIdentity(bookmark);
                 // 通知BookmarkManager删除单个书签
                 manager.onBookmarkRemoved(bookmark);
-                JEIEnhancements.LOGGER.debug("Removed single bookmark by identity");
             }
             
             // 通知监听器刷新UI
@@ -300,8 +277,7 @@ public class BookmarkListMixin {
             // 取消原始方法，返回是否成功删除
             cir.setReturnValue(removed);
         } else {
-            // 不是我们管理的书签，让JEI正常处理
-            // 但仍然通知manager（以防万一）
+            // 通知manager（以防万一）
             manager.onBookmarkRemoved(bookmark);
         }
     }

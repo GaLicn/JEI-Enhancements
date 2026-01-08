@@ -24,7 +24,6 @@ import java.util.Optional;
 
 /**
  * 拦截配方界面的按键事件
- * 实现NEI风格的Shift+A / Ctrl+Shift+A添加配方组到书签
  */
 @Mixin(value = RecipesGui.class, remap = false)
 public abstract class RecipesGuiMixin {

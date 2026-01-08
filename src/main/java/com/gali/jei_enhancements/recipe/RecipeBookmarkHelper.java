@@ -140,8 +140,6 @@ public class RecipeBookmarkHelper {
             }
             
             if (added) {
-                JEIEnhancements.LOGGER.info("Added recipe to bookmarks: groupId={}, {} outputs, {} inputs", 
-                        groupId, outputs.size(), inputs.size());
                 manager.save();
             }
             
@@ -175,11 +173,9 @@ public class RecipeBookmarkHelper {
         // 添加到JEI书签列表（Mixin会绕过重复检测）
         bookmarkList.add(bookmark);
         
-        // 添加到我们的BookmarkManager
+        // 添加到BookmarkManager
         manager.addBookmarkItem(groupId, itemKey, member.quantity, type, bookmark);
-        
-        JEIEnhancements.LOGGER.debug("Added member: groupId={}, itemKey={}, quantity={}, type={}", 
-                groupId, itemKey, member.quantity, type);
+
         
         return true;
     }

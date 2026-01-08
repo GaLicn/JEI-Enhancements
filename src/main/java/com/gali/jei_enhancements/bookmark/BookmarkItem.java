@@ -4,19 +4,13 @@ import mezz.jei.gui.bookmarks.IBookmark;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * NEI风格的书签项
- * 
- * 与JEI的IBookmark不同，BookmarkItem包含：
  * - groupId: 所属组ID
  * - itemKey: 物品唯一标识
  * - baseQuantity: 配方中的基础数量
  * - type: 类型（输出/输入/普通物品）
  */
 public class BookmarkItem {
-    
-    /**
-     * 书签项类型（参照NEI）
-     */
+
     public enum BookmarkItemType {
         ITEM,       // 普通物品（单独添加的书签）
         RESULT,     // 配方输出

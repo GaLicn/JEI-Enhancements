@@ -40,7 +40,6 @@ public class BookmarkLayoutManager {
         if (this.currentMode != mode) {
             this.currentMode = mode;
             this.dirty = true;
-            JEIEnhancements.LOGGER.info("Bookmark layout mode changed to: {}", mode);
         }
     }
     
@@ -61,8 +60,6 @@ public class BookmarkLayoutManager {
     public boolean isVerticalMode() {
         return currentMode == LayoutMode.VERTICAL;
     }
-    
-    // ==================== 持久化 ====================
     
     private Path getSaveFilePath() {
         Minecraft mc = Minecraft.getInstance();

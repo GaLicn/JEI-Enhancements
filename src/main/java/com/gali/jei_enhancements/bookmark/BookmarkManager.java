@@ -16,9 +16,6 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * NEI风格的书签管理器
- * 
- * 核心概念：
  * - BookmarkItem: 书签项，包含groupId、itemKey、数量、类型等信息
  * - 同一物品可以在不同组中独立存在
  * - 每个组有自己的倍率(multiplier)
@@ -28,7 +25,7 @@ public class BookmarkManager {
     private static final BookmarkManager INSTANCE = new BookmarkManager();
     private static final String SAVE_FILE_NAME = "jei_enhancements_bookmarks.json";
     
-    // 所有书签项（NEI风格：按添加顺序存储）
+    // 所有书签项
     private final List<BookmarkItem> bookmarkItems = new ArrayList<>();
     
     // 组信息
@@ -61,8 +58,7 @@ public class BookmarkManager {
         groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
     }
     
-    // ==================== 允许重复控制 ====================
-    
+
     public boolean isAllowDuplicates() {
         return allowDuplicates;
     }
@@ -79,8 +75,7 @@ public class BookmarkManager {
         this.currentAddingGroupId = groupId;
     }
     
-    // ==================== 组管理 ====================
-    
+
     /**
      * 创建新组
      */
@@ -124,11 +119,9 @@ public class BookmarkManager {
         }
         return activeIds;
     }
-    
-    // ==================== 书签项管理 ====================
-    
+
     /**
-     * 添加书签项（NEI风格）
+     * 添加书签项
      */
     public BookmarkItem addBookmarkItem(int groupId, String itemKey, int baseQuantity, 
             BookmarkItem.BookmarkItemType type, IBookmark jeiBookmark) {
@@ -147,9 +140,6 @@ public class BookmarkManager {
             jeiBookmarkMap.put(jeiBookmark, item);
         }
         
-        JEIEnhancements.LOGGER.debug("Added bookmark item: groupId={}, itemKey={}, quantity={}, type={}", 
-                groupId, itemKey, baseQuantity, type);
-        
         markDirty();
         return item;
     }
@@ -163,9 +153,7 @@ public class BookmarkManager {
         if (item != null) {
             return item;
         }
-        
-        // 如果映射表中没有，不再自动建立映射
-        // 映射应该通过tryLinkBookmark在add时建立
+
         return null;
     }
     
@@ -190,13 +178,9 @@ public class BookmarkManager {
                 // 建立映射
                 item.setLinkedBookmark(bookmark);
                 jeiBookmarkMap.put(bookmark, item);
-                JEIEnhancements.LOGGER.debug("Linked bookmark {} to group {}", itemKey, item.getGroupId());
                 return;
             }
         }
-        
-        // 没有找到匹配的BookmarkItem，这是一个新的普通书签
-        // 不需要特殊处理，JEI会正常添加
     }
     
     // 标记是否已加载
@@ -213,7 +197,7 @@ public class BookmarkManager {
     }
     
     /**
-     * 清除所有JEI书签映射（不清除BookmarkItem数据）
+     * 清除所有JEI书签映射
      */
     public void clearMappings() {
         jeiBookmarkMap.clear();
@@ -264,9 +248,6 @@ public class BookmarkManager {
     
     /**
      * 当JEI书签被删除时调用（仅处理单个书签，不处理组头）
-     * 
-     * 注意：组头（RESULT类型）的删除由BookmarkListMixin直接调用removeGroup()处理，
-     * 这里只处理普通成员的删除。
      */
     public void onBookmarkRemoved(IBookmark bookmark) {
         // 首先尝试从映射表查找
@@ -274,15 +255,12 @@ public class BookmarkManager {
         
         if (item != null) {
             // 组头的删除由mixin处理，这里只删除单个成员
-            // （如果是组头，mixin会调用removeGroup，不会走到这里）
             bookmarkItems.remove(item);
-            JEIEnhancements.LOGGER.info("Removed bookmark item: {}", item.getItemKey());
             markDirty();
         }
     }
     
-    // ==================== 数量管理 ====================
-    
+
     /**
      * 获取书签项的当前数量（基础数量 * 组倍率）
      */
@@ -305,8 +283,7 @@ public class BookmarkManager {
         }
     }
     
-    // ==================== 工具方法 ====================
-    
+
     /**
      * 从JEI书签获取物品key
      */
@@ -337,8 +314,7 @@ public class BookmarkManager {
         return key;
     }
     
-    // ==================== 持久化 ====================
-    
+
     private void markDirty() {
         dirty = true;
     }
@@ -379,8 +355,7 @@ public class BookmarkManager {
             Files.writeString(savePath, gson.toJson(root), StandardCharsets.UTF_8);
             
             dirty = false;
-            JEIEnhancements.LOGGER.debug("Saved bookmark data");
-            
+
         } catch (Exception e) {
             JEIEnhancements.LOGGER.error("Failed to save bookmark data", e);
         }
@@ -441,9 +416,7 @@ public class BookmarkManager {
             
             dirty = false;
             loaded = true;
-            JEIEnhancements.LOGGER.info("Loaded bookmark data: {} items in {} groups", 
-                    bookmarkItems.size(), groups.size());
-            
+
         } catch (Exception e) {
             JEIEnhancements.LOGGER.error("Failed to load bookmark data", e);
             loaded = true;

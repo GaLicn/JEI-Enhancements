@@ -68,8 +68,6 @@ public abstract class IngredientListRendererMixin {
             return;
         }
 
-        JEIEnhancements.LOGGER.debug("=== IngredientListRendererMixin.onSet (VERTICAL MODE) ===");
-
         List<IngredientListSlot> activeSlots = new ArrayList<>();
         for (IngredientListSlot slot : slots) {
             if (!slot.isBlocked()) {

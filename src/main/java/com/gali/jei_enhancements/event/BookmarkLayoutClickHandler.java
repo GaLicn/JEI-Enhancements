@@ -29,7 +29,7 @@ import java.util.Optional;
 /**
  * 处理书签页码区域的点击事件
  * - 点击页码区域切换水平/纵向排列
- * - Alt+点击分组物品切换展开/折叠（NEI风格）
+ * - Alt+点击分组物品切换展开/折叠
  */
 public class BookmarkLayoutClickHandler {
 
@@ -83,7 +83,7 @@ public class BookmarkLayoutClickHandler {
     }
     
     /**
-     * 处理分组展开/折叠切换（NEI风格：Alt+点击）
+     * 处理分组展开/折叠切换
      */
     private boolean handleGroupToggle(BookmarkOverlay overlay, double mouseX, double mouseY) {
         try {
@@ -130,7 +130,6 @@ public class BookmarkLayoutClickHandler {
                     // 刷新显示
                     forceRefreshBookmarks(overlay);
                     
-                    JEIEnhancements.LOGGER.debug("Toggled group {} expanded: {}", item.getGroupId(), group.isExpanded());
                     return true;
                 }
             }
