@@ -304,30 +304,49 @@ public class BookmarkManager {
     
     /**
      * 调整配方的数量（RESULT及其关联的INGREDIENT）
+     * 如果组内只有一个RESULT，则更新组内所有物品
      */
     private void shiftRecipeAmount(BookmarkItem resultItem, long shift) {
         int groupId = resultItem.getGroupId();
         List<BookmarkItem> items = getGroupItems(groupId);
         
-        int resultIndex = items.indexOf(resultItem);
-        if (resultIndex < 0) return;
+        if (items.isEmpty()) return;
         
         // 计算新的multiplier
         long currentMultiplier = resultItem.getMultiplier();
         long newMultiplier = shiftMultiplier(currentMultiplier, shift, 1);
         
-        // 更新RESULT
-        resultItem.setMultiplier(newMultiplier);
-        
-        // 更新同一配方的INGREDIENT（紧跟在RESULT后面的INGREDIENT）
-        for (int i = resultIndex + 1; i < items.size(); i++) {
-            BookmarkItem nextItem = items.get(i);
-            if (nextItem.isOutput()) {
-                // 遇到下一个RESULT，停止
-                break;
+        // 统计组内RESULT的数量
+        int resultCount = 0;
+        for (BookmarkItem item : items) {
+            if (item.isOutput()) {
+                resultCount++;
             }
-            if (nextItem.isIngredient()) {
-                nextItem.setMultiplier(newMultiplier);
+        }
+        
+        // 如果组内只有一个RESULT，更新组内所有物品
+        if (resultCount <= 1) {
+            for (BookmarkItem item : items) {
+                item.setMultiplier(newMultiplier);
+            }
+        } else {
+            // 多个RESULT的情况，只更新当前RESULT及其后面的INGREDIENT（直到下一个RESULT）
+            int resultIndex = items.indexOf(resultItem);
+            if (resultIndex < 0) return;
+            
+            // 更新RESULT
+            resultItem.setMultiplier(newMultiplier);
+            
+            // 更新同一配方的INGREDIENT（紧跟在RESULT后面的INGREDIENT）
+            for (int i = resultIndex + 1; i < items.size(); i++) {
+                BookmarkItem nextItem = items.get(i);
+                if (nextItem.isOutput()) {
+                    // 遇到下一个RESULT，停止
+                    break;
+                }
+                if (nextItem.isIngredient()) {
+                    nextItem.setMultiplier(newMultiplier);
+                }
             }
         }
         
@@ -645,15 +664,121 @@ public class BookmarkManager {
     public String getItemKey(IBookmark bookmark) {
         if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
             ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
-            Object obj = ingredient.getIngredient();
-            
-            if (obj instanceof ItemStack stack) {
-                return getItemKeyFromStack(stack);
-            }
-            
-            return ingredient.getType().getUid() + ":" + obj.hashCode();
+            return getItemKeyFromIngredient(ingredient);
         }
         return String.valueOf(bookmark.hashCode());
+    }
+    
+    /**
+     * 从ITypedIngredient获取物品key
+     * 支持ItemStack、FluidStack和其他类型（如Mekanism的ChemicalStack）
+     */
+    public String getItemKeyFromIngredient(ITypedIngredient<?> ingredient) {
+        Object obj = ingredient.getIngredient();
+        
+        if (obj instanceof ItemStack stack) {
+            return getItemKeyFromStack(stack);
+        }
+        
+        // 对于流体和其他类型，尝试获取更稳定的标识符
+        String typeUid = ingredient.getType().getUid().toString();
+        
+        // 尝试使用反射获取流体/化学物质的注册名称
+        String stableKey = getStableKeyForObject(obj);
+        if (stableKey != null) {
+            return typeUid + ":" + stableKey;
+        }
+        
+        // 回退到使用toString()，通常比hashCode()更稳定
+        return typeUid + ":" + obj.toString();
+    }
+    
+    /**
+     * 尝试获取对象的稳定key（用于流体、化学物质等）
+     */
+    private String getStableKeyForObject(Object obj) {
+        try {
+            // 尝试NeoForge FluidStack
+            if (obj.getClass().getName().contains("FluidStack")) {
+                // 尝试获取getFluid().builtInRegistryHolder().key().location()
+                java.lang.reflect.Method getFluid = obj.getClass().getMethod("getFluid");
+                Object fluid = getFluid.invoke(obj);
+                if (fluid != null) {
+                    // 尝试获取注册名称
+                    java.lang.reflect.Method builtInRegistryHolder = fluid.getClass().getMethod("builtInRegistryHolder");
+                    Object holder = builtInRegistryHolder.invoke(fluid);
+                    if (holder != null) {
+                        java.lang.reflect.Method key = holder.getClass().getMethod("key");
+                        Object resourceKey = key.invoke(holder);
+                        if (resourceKey != null) {
+                            java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
+                            Object loc = location.invoke(resourceKey);
+                            if (loc != null) {
+                                return loc.toString();
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 尝试Mekanism ChemicalStack
+            if (obj.getClass().getName().contains("ChemicalStack")) {
+                // 尝试获取getType().getRegistryName() 或 getChemical().getRegistryName()
+                java.lang.reflect.Method getChemical = null;
+                try {
+                    getChemical = obj.getClass().getMethod("getChemical");
+                } catch (NoSuchMethodException e) {
+                    try {
+                        getChemical = obj.getClass().getMethod("getType");
+                    } catch (NoSuchMethodException e2) {
+                        // ignore
+                    }
+                }
+                
+                if (getChemical != null) {
+                    Object chemical = getChemical.invoke(obj);
+                    if (chemical != null) {
+                        // 尝试获取注册名称
+                        java.lang.reflect.Method getRegistryName = null;
+                        try {
+                            getRegistryName = chemical.getClass().getMethod("getRegistryName");
+                        } catch (NoSuchMethodException e) {
+                            // 尝试其他方法
+                            try {
+                                // Mekanism 1.21+ 使用不同的API
+                                java.lang.reflect.Method builtInRegistryHolder = chemical.getClass().getMethod("builtInRegistryHolder");
+                                Object holder = builtInRegistryHolder.invoke(chemical);
+                                if (holder != null) {
+                                    java.lang.reflect.Method key = holder.getClass().getMethod("key");
+                                    Object resourceKey = key.invoke(holder);
+                                    if (resourceKey != null) {
+                                        java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
+                                        Object loc = location.invoke(resourceKey);
+                                        if (loc != null) {
+                                            return loc.toString();
+                                        }
+                                    }
+                                }
+                            } catch (Exception ex) {
+                                // ignore
+                            }
+                        }
+                        
+                        if (getRegistryName != null) {
+                            Object regName = getRegistryName.invoke(chemical);
+                            if (regName != null) {
+                                return regName.toString();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 反射失败，返回null使用回退方案
+            JEIEnhancements.LOGGER.debug("Failed to get stable key for object: " + obj.getClass().getName(), e);
+        }
+        
+        return null;
     }
     
     /**

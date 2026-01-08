@@ -1,6 +1,5 @@
 package com.gali.jei_enhancements.recipe;
 
-import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
@@ -14,10 +13,7 @@ import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.bookmarks.BookmarkFactory;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.*;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -59,6 +55,7 @@ public class RecipeBookmarkHelper {
 
     /**
      * 将配方的输出和所有输入作为一组添加到书签
+     * 只添加主产物（第一个输出）和所有输入，不添加副产物
      */
     public static <R> boolean addRecipeToBookmarks(
             IRecipeLayoutDrawable<R> recipeLayout,
@@ -111,7 +108,8 @@ public class RecipeBookmarkHelper {
         List<RecipeMember> outputs = new ArrayList<>(outputMap.values());
         List<RecipeMember> inputs = new ArrayList<>(inputMap.values());
         
-        if (outputs.isEmpty() && inputs.isEmpty()) {
+        // 必须有主产物
+        if (outputs.isEmpty()) {
             return false;
         }
         
@@ -125,21 +123,22 @@ public class RecipeBookmarkHelper {
         try {
             boolean added = false;
             
-            // 先添加输出
-            for (RecipeMember member : outputs) {
-                if (addMemberToBookmarks(member, groupId, bookmarkList, bookmarkFactory, manager, 
-                        BookmarkItem.BookmarkItemType.RESULT)) {
-                    added = true;
-                }
+            // 1. 只添加第一个输出作为主产物（RESULT）- 不添加副产物
+            RecipeMember mainOutput = outputs.get(0);
+            if (addMemberToBookmarks(mainOutput, groupId, bookmarkList, bookmarkFactory, manager, 
+                    BookmarkItem.BookmarkItemType.RESULT)) {
+                added = true;
             }
             
-            // 再添加输入
+            // 2. 添加所有输入（INGREDIENT）
             for (RecipeMember member : inputs) {
                 if (addMemberToBookmarks(member, groupId, bookmarkList, bookmarkFactory, manager,
                         BookmarkItem.BookmarkItemType.INGREDIENT)) {
                     added = true;
                 }
             }
+            
+            // 不添加副产物（outputs中索引>0的项）
             
             if (added) {
                 manager.save();
@@ -186,16 +185,8 @@ public class RecipeBookmarkHelper {
      * 获取物品的唯一key
      */
     private static String getItemKey(ITypedIngredient<?> ingredient) {
-        Object obj = ingredient.getIngredient();
-        if (obj instanceof ItemStack stack) {
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            String key = itemId.toString();
-            if (stack.getComponentsPatch() != null && !stack.getComponentsPatch().isEmpty()) {
-                key += ":" + stack.getComponentsPatch().hashCode();
-            }
-            return key;
-        }
-        return ingredient.getType().getUid() + ":" + obj.hashCode();
+        // 使用BookmarkManager的方法来获取统一的key
+        return BookmarkManager.getInstance().getItemKeyFromIngredient(ingredient);
     }
     
     private static int getIngredientQuantity(ITypedIngredient<?> ingredient) {
