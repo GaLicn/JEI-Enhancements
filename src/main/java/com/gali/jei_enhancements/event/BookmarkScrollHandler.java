@@ -19,7 +19,7 @@ import java.util.stream.Stream;
 
 /**
  * 处理书签区域的滚轮事件
- * 实现NEI风格的Ctrl+滚轮调整书签数量的功能
+ * Ctrl+滚轮调整书签数量
  */
 public class BookmarkScrollHandler {
 
@@ -82,19 +82,15 @@ public class BookmarkScrollHandler {
         }
 
         // 计算调整量
-        double delta = Math.signum(scrollDelta);
+        long shift = (long) Math.signum(scrollDelta);
 
-        // 如果同时按住Shift，则以更大的步进调整 (64)
-        if (Screen.hasShiftDown()) {
-            delta *= 64;
-        }
-        // 如果同时按住Alt，则以中等步进调整 (10)
-        else if (Screen.hasAltDown()) {
-            delta *= 10;
+        // Ctrl+Alt: 以更大的步进调整 (10)
+        if (Screen.hasAltDown()) {
+            shift *= 10;
         }
 
-        // 调整组的倍率
-        manager.adjustGroupMultiplier(item.getGroupId(), delta);
+        // 调整数量
+        manager.shiftItemAmount(item, shift);
         
         // 保存数据
         manager.save();

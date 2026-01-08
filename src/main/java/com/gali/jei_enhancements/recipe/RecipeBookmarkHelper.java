@@ -86,10 +86,12 @@ public class RecipeBookmarkHelper {
                 continue;
             }
             
-            ingredient = ingredientManager.normalizeTypedIngredient(ingredient);
-            String itemKey = getItemKey(ingredient);
+            // 先获取数量，再normalize（normalize可能会重置数量）
             int quantity = getIngredientQuantity(ingredient);
             if (quantity <= 0) quantity = 1;
+            
+            ingredient = ingredientManager.normalizeTypedIngredient(ingredient);
+            String itemKey = getItemKey(ingredient);
             
             if (role == RecipeIngredientRole.OUTPUT) {
                 if (outputMap.containsKey(itemKey)) {

@@ -102,10 +102,18 @@ public class GroupingDragHandler {
         if (button == 1) {
             BookmarkItem item = findBookmarkItemAtRow(rowIndex, slots);
             if (item != null && item.getGroupId() != BookmarkManager.DEFAULT_GROUP_ID) {
-                BookmarkGroup group = BookmarkManager.getInstance().getGroup(item.getGroupId());
+                BookmarkManager manager = BookmarkManager.getInstance();
+                BookmarkGroup group = manager.getGroup(item.getGroupId());
                 if (group != null) {
+                    // 只切换当前组的crafting chain状态
                     group.toggleCraftingChain();
-                    BookmarkManager.getInstance().save();
+                    
+                    // 如果开启了crafting chain，立即计算组内配方的数量关系
+                    if (group.isCraftingChainEnabled()) {
+                        manager.recalculateCraftingChainInGroup(item.getGroupId());
+                    }
+                    
+                    manager.save();
                     return true;
                 }
             }
@@ -128,30 +136,34 @@ public class GroupingDragHandler {
             return false;
         }
         
+        // 检查这一行是否有书签
+        BookmarkItem item = findBookmarkItemAtRow(rowIndex, slots);
+        if (item == null) {
+            return false;
+        }
+        
         // 构建当前的行到组ID映射
         buildRowToGroupIdMap(slots);
         
-        BookmarkItem item = findBookmarkItemAtRow(rowIndex, slots);
-        int groupId = (item != null) ? item.getGroupId() : BookmarkManager.DEFAULT_GROUP_ID;
-        
-        // 左键：创建新组或扩展组
-        // 右键：从组中排除（只有非默认组才能排除）
+        int groupId = item.getGroupId();
+
+        // 左键：如果在默认组，创建新组(Integer.MIN_VALUE)；否则使用当前组ID
+        // 右键：目标是默认组(DEFAULT_GROUP_ID)
         if (button == 0) {
             // 左键拖动
             isDragging = true;
             dragButton = 0;
             startRowIndex = rowIndex;
             endRowIndex = rowIndex;
-            // 如果当前行在默认组，创建新组；否则使用当前组
             startGroupId = (groupId == BookmarkManager.DEFAULT_GROUP_ID) ? Integer.MIN_VALUE : groupId;
             return true;
-        } else if (button == 1 && groupId != BookmarkManager.DEFAULT_GROUP_ID) {
-            // 右键拖动（从组中排除）
+        } else if (button == 1) {
+            // 右键拖动（目标是默认组）
             isDragging = true;
             dragButton = 1;
             startRowIndex = rowIndex;
             endRowIndex = rowIndex;
-            startGroupId = BookmarkManager.DEFAULT_GROUP_ID;  // 排除到默认组
+            startGroupId = BookmarkManager.DEFAULT_GROUP_ID;
             return true;
         }
         
@@ -185,8 +197,14 @@ public class GroupingDragHandler {
         int maxRow = Math.max(startRowIndex, endRowIndex);
         
         if (dragButton == 0) {
-            // 左键：将行加入组
-            includeRowsInGroup(minRow, maxRow, slots);
+            // 左键拖动
+            if (startRowIndex <= endRowIndex) {
+                // 从上往下拖动：合并组
+                includeRowsInGroup(minRow, maxRow, slots);
+            } else {
+                // 从下往上拖动：取消合并，分离选中的行
+                separateRowsFromGroup(minRow, maxRow, slots);
+            }
         } else if (dragButton == 1) {
             // 右键：将行从组中排除
             excludeRowsFromGroup(minRow, maxRow, slots);
@@ -255,74 +273,55 @@ public class GroupingDragHandler {
     }
     
     /**
-     * 将行加入组（左键拖动）
-     * NEI风格：只改变groupId，不移动位置，不改变类型
-     * 每个原来的组头保持为组头
+     * 将行加入组（左键从上往下拖动）
+     * 将选中范围内的所有行合并到同一个组
      */
     private void includeRowsInGroup(int minRow, int maxRow, List<IngredientListSlot> slots) {
         BookmarkManager manager = BookmarkManager.getInstance();
         
-        // 收集所有受影响行的所有书签项（不只是第一个）
-        List<BookmarkItem> allItemsInRange = new ArrayList<>();
-        Set<Integer> existingGroupIds = new LinkedHashSet<>();  // 保持顺序
+        // 收集所有受影响行的物品
+        List<BookmarkItem> affectedItems = new ArrayList<>();
+        Set<Integer> existingGroupIds = new LinkedHashSet<>();
         
         for (int row = minRow; row <= maxRow; row++) {
             List<BookmarkItem> rowItems = findAllBookmarkItemsAtRow(row, slots);
-            allItemsInRange.addAll(rowItems);
             for (BookmarkItem item : rowItems) {
+                affectedItems.add(item);
                 if (item.getGroupId() != BookmarkManager.DEFAULT_GROUP_ID) {
                     existingGroupIds.add(item.getGroupId());
                 }
             }
         }
         
-        if (allItemsInRange.isEmpty()) {
+        if (affectedItems.isEmpty()) {
             return;
         }
         
-        // 确定目标组ID：
-        // 1. 如果startGroupId是Integer.MIN_VALUE，创建新组
-        // 2. 否则使用第一个已存在的非默认组
-        // 3. 如果都是默认组，创建新组
+        // 确定目标组ID
         int targetGroupId;
-        if (startGroupId == Integer.MIN_VALUE) {
+        if (existingGroupIds.isEmpty()) {
+            // 没有现有组，创建新组
             targetGroupId = manager.createGroup();
-        } else if (!existingGroupIds.isEmpty()) {
-            targetGroupId = existingGroupIds.iterator().next();
         } else {
-            targetGroupId = manager.createGroup();
+            // 使用第一个现有组的ID
+            targetGroupId = existingGroupIds.iterator().next();
         }
         
-        // 收集所有需要合并的组的所有项（包括不在选择范围内的）
-        Set<Integer> groupsToMerge = new HashSet<>(existingGroupIds);
-        List<BookmarkItem> allItemsToMerge = new ArrayList<>();
-        
-        for (int groupId : groupsToMerge) {
-            if (groupId != targetGroupId) {
-                allItemsToMerge.addAll(manager.getGroupItems(groupId));
-            }
-        }
-        
-        // 也添加选择范围内的默认组项
-        for (BookmarkItem item : allItemsInRange) {
-            if (item.getGroupId() == BookmarkManager.DEFAULT_GROUP_ID) {
-                allItemsToMerge.add(item);
-            }
-        }
-        
-        // 只改变groupId，不改变位置和类型
-        for (BookmarkItem item : allItemsToMerge) {
+        // 将所有物品移动到目标组
+        for (BookmarkItem item : affectedItems) {
             int oldGroupId = item.getGroupId();
             if (oldGroupId != targetGroupId) {
                 item.setGroupId(targetGroupId);
-                // 不改变类型！保持原来的RESULT/INGREDIENT/ITEM类型
             }
         }
         
-        // 清理空组（只删除组定义，不删除项）
-        for (int groupId : groupsToMerge) {
-            if (groupId != targetGroupId && groupId != BookmarkManager.DEFAULT_GROUP_ID) {
-                manager.removeGroupOnly(groupId);
+        // 清理空组
+        for (int groupId : existingGroupIds) {
+            if (groupId != targetGroupId) {
+                List<BookmarkItem> remaining = manager.getGroupItems(groupId);
+                if (remaining.isEmpty()) {
+                    manager.removeGroupOnly(groupId);
+                }
             }
         }
         
@@ -358,7 +357,7 @@ public class GroupingDragHandler {
     
     /**
      * 将行从组中排除（右键拖动）
-     * NEI风格：只改变groupId到默认组，不改变类型
+     * 将选中的行移到默认组，但不删除原组
      */
     private void excludeRowsFromGroup(int minRow, int maxRow, List<IngredientListSlot> slots) {
         BookmarkManager manager = BookmarkManager.getInstance();
@@ -370,7 +369,34 @@ public class GroupingDragHandler {
                 if (item.getGroupId() != BookmarkManager.DEFAULT_GROUP_ID) {
                     affectedGroupIds.add(item.getGroupId());
                     item.setGroupId(BookmarkManager.DEFAULT_GROUP_ID);
-                    // 不改变类型！保持原来的RESULT/INGREDIENT/ITEM类型
+                }
+            }
+        }
+        
+        // 清理空组（只有当组内没有任何物品时才删除）
+        for (int groupId : affectedGroupIds) {
+            List<BookmarkItem> remaining = manager.getGroupItems(groupId);
+            if (remaining.isEmpty()) {
+                manager.removeGroupOnly(groupId);
+            }
+        }
+        
+        manager.save();
+    }
+    
+    /**
+     * 从下往上拖动：将选中的行从组中分离出来（移到默认组）
+     */
+    private void separateRowsFromGroup(int minRow, int maxRow, List<IngredientListSlot> slots) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        Set<Integer> affectedGroupIds = new HashSet<>();
+        
+        for (int row = minRow; row <= maxRow; row++) {
+            List<BookmarkItem> rowItems = findAllBookmarkItemsAtRow(row, slots);
+            for (BookmarkItem item : rowItems) {
+                if (item.getGroupId() != BookmarkManager.DEFAULT_GROUP_ID) {
+                    affectedGroupIds.add(item.getGroupId());
+                    item.setGroupId(BookmarkManager.DEFAULT_GROUP_ID);
                 }
             }
         }
@@ -503,16 +529,18 @@ public class GroupingDragHandler {
             int endRow = range[1];
             int groupId = range[2];
             
-            // 确定颜色：crafting chain模式为绿色，否则为灰色
+            // 确定颜色
             BookmarkGroup group = manager.getGroup(groupId);
             int color;
             if (groupId == Integer.MIN_VALUE) {
                 // 预览中的新组
                 color = DRAG_COLOR;
             } else if (group != null && group.isCraftingChainEnabled()) {
-                color = GROUP_CHAIN_COLOR;  // 绿色
+                color = GROUP_CHAIN_COLOR;  // 绿色 - crafting chain模式
+            } else if (group != null && group.hasLink()) {
+                color = 0xFFAAAAAA;  // 浅灰色 - 有链接但未开启crafting chain
             } else {
-                color = GROUP_NONE_COLOR;   // 灰色
+                color = GROUP_NONE_COLOR;   // 深灰色 - 普通组
             }
             
             drawGroupBracket(guiGraphics, startRow, endRow, color);
@@ -569,5 +597,12 @@ public class GroupingDragHandler {
     
     public int getDragButton() {
         return dragButton;
+    }
+    
+    /**
+     * 判断是否是单击（起始行和结束行相同）
+     */
+    public boolean isSingleClick() {
+        return startRowIndex == endRowIndex;
     }
 }

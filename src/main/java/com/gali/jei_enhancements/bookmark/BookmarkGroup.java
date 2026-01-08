@@ -1,38 +1,57 @@
 package com.gali.jei_enhancements.bookmark;
 
 /**
- * 书签组（NEI风格）
- * 每个组有：
  * - groupId: 唯一标识
- * - multiplier: 倍率（用于按比例调整数量）
+ * - linkedGroupId: 逻辑链接的组ID（用于crafting chain）
  * - expanded: 是否展开显示
  * - craftingChainEnabled: 是否开启crafting chain模式（[变绿）
  */
 public class BookmarkGroup {
     
     private final int groupId;
-    private double multiplier = 1.0;
+    private int linkedGroupId;  // 逻辑链接的组ID，-1表示没有链接
     private boolean expanded = true;
-    private boolean craftingChainEnabled = false;  // NEI的crafting chain模式
+    private boolean craftingChainEnabled = false;
     
     public BookmarkGroup(int groupId) {
         this.groupId = groupId;
+        this.linkedGroupId = -1;  // 默认没有链接
     }
     
     public int getGroupId() {
         return groupId;
     }
     
+    /**
+     * 获取逻辑链接的组ID
+     * 多个组可以链接到同一个linkedGroupId，表示它们是逻辑同组
+     */
+    public int getLinkedGroupId() {
+        return linkedGroupId;
+    }
+    
+    public void setLinkedGroupId(int linkedGroupId) {
+        this.linkedGroupId = linkedGroupId;
+    }
+    
+    /**
+     * 是否有逻辑链接
+     */
+    public boolean hasLink() {
+        return linkedGroupId >= 0;
+    }
+    
+    // 兼容旧代码
     public double getMultiplier() {
-        return multiplier;
+        return 1.0;
     }
     
     public void setMultiplier(double multiplier) {
-        this.multiplier = Math.max(0.0, Math.min(multiplier, 9999.0));
+        // 不再使用组级别的multiplier
     }
     
     public void adjustMultiplier(double delta) {
-        setMultiplier(this.multiplier + delta);
+        // 不再使用组级别的multiplier
     }
     
     public boolean isExpanded() {

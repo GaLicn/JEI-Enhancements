@@ -94,6 +94,13 @@ public class BookmarkManager {
     }
     
     /**
+     * 获取所有组
+     */
+    public java.util.Collection<BookmarkGroup> getAllGroups() {
+        return groups.values();
+    }
+    
+    /**
      * 删除组及其所有书签项
      */
     public void removeGroup(int groupId) {
@@ -262,25 +269,323 @@ public class BookmarkManager {
     
 
     /**
-     * 获取书签项的当前数量（基础数量 * 组倍率）
+     * 获取书签项的当前数量
+     * 直接返回item的amount
      */
     public int getQuantity(BookmarkItem item) {
+        return (int) item.getAmount();
+    }
+    
+    /**
+     * @param item 要调整的物品
+     * @param shift 调整的multiplier增量
+     */
+    public void shiftItemAmount(BookmarkItem item, long shift) {
+        if (item == null) return;
+        
         BookmarkGroup group = groups.get(item.getGroupId());
-        if (group != null) {
-            return (int) Math.ceil(item.getBaseQuantity() * group.getMultiplier());
+        
+        // 如果是组头（RESULT类型）且在非默认组，调整整个配方（同一个RESULT下的所有INGREDIENT）
+        if (item.isOutput() && item.getGroupId() != DEFAULT_GROUP_ID) {
+            // 调整这个配方的所有物品
+            shiftRecipeAmount(item, shift);
+            
+            // 如果是crafting chain模式，重新计算组内的配方关系
+            if (group != null && group.isCraftingChainEnabled()) {
+                recalculateCraftingChainInGroup(item.getGroupId());
+            }
+            return;
         }
-        return item.getBaseQuantity();
+        
+        // 非组头物品，只调整当前物品
+        item.shiftMultiplier(shift);
+        markDirty();
+    }
+    
+    /**
+     * 调整配方的数量（RESULT及其关联的INGREDIENT）
+     */
+    private void shiftRecipeAmount(BookmarkItem resultItem, long shift) {
+        int groupId = resultItem.getGroupId();
+        List<BookmarkItem> items = getGroupItems(groupId);
+        
+        int resultIndex = items.indexOf(resultItem);
+        if (resultIndex < 0) return;
+        
+        // 计算新的multiplier
+        long currentMultiplier = resultItem.getMultiplier();
+        long newMultiplier = shiftMultiplier(currentMultiplier, shift, 1);
+        
+        // 更新RESULT
+        resultItem.setMultiplier(newMultiplier);
+        
+        // 更新同一配方的INGREDIENT（紧跟在RESULT后面的INGREDIENT）
+        for (int i = resultIndex + 1; i < items.size(); i++) {
+            BookmarkItem nextItem = items.get(i);
+            if (nextItem.isOutput()) {
+                // 遇到下一个RESULT，停止
+                break;
+            }
+            if (nextItem.isIngredient()) {
+                nextItem.setMultiplier(newMultiplier);
+            }
+        }
+        
+        markDirty();
+    }
+    
+    /**
+     * 调整单个子组的数量（不触发crafting chain联动）
+     */
+    private void shiftSubGroupAmount(int groupId, long shift) {
+        List<BookmarkItem> items = getGroupItems(groupId);
+        if (items.isEmpty()) return;
+        
+        // 找出当前最小的multiplier
+        long minMultiplier = Long.MAX_VALUE;
+        for (BookmarkItem item : items) {
+            minMultiplier = Math.min(minMultiplier, item.getMultiplier());
+        }
+        
+        if (minMultiplier == Long.MAX_VALUE) {
+            minMultiplier = 1;
+        }
+        
+        // 计算新的multiplier
+        long newMultiplier = shiftMultiplier(minMultiplier, shift, 1);
+        
+        // 更新所有物品的数量
+        for (BookmarkItem item : items) {
+            item.setMultiplier(newMultiplier);
+        }
+        
+        markDirty();
+    }
+    
+    /**
+     * 调整组内所有物品的数量
+     * 所有物品的multiplier同步调整
+     * 如果是crafting chain模式，还会影响逻辑同组的其他子组
+     */
+    public void shiftGroupAmount(int groupId, long shift) {
+        BookmarkGroup group = groups.get(groupId);
+        if (group == null) return;
+        
+        List<BookmarkItem> items = getGroupItems(groupId);
+        if (items.isEmpty()) return;
+        
+        // 找出当前最小的multiplier
+        long minMultiplier = Long.MAX_VALUE;
+        for (BookmarkItem item : items) {
+            minMultiplier = Math.min(minMultiplier, item.getMultiplier());
+        }
+        
+        if (minMultiplier == Long.MAX_VALUE) {
+            minMultiplier = 1;
+        }
+        
+        // 计算新的multiplier
+        long newMultiplier = shiftMultiplier(minMultiplier, shift, 1);
+        
+        // 更新所有物品的数量
+        for (BookmarkItem item : items) {
+            item.setMultiplier(newMultiplier);
+        }
+        
+        // 如果是crafting chain模式，重新计算组内配方关系
+        if (group.isCraftingChainEnabled()) {
+            recalculateCraftingChainInGroup(groupId);
+        }
+        
+        markDirty();
+    }
+    
+    /**
+     * 重新计算组内的crafting chain
+     * 
+     * 核心逻辑：
+     * 1. 建立INGREDIENT到RESULT的映射（preferredItems）
+     * 2. 从第一个配方开始，计算它的INGREDIENT需求
+     * 3. 如果某个INGREDIENT有对应的RESULT能提供，计算需要多少，并递归处理那个配方
+     */
+    public void recalculateCraftingChainInGroup(int groupId) {
+        BookmarkGroup group = groups.get(groupId);
+        if (group == null || !group.isCraftingChainEnabled()) return;
+        
+        List<BookmarkItem> items = getGroupItems(groupId);
+        if (items.isEmpty()) return;
+        
+        // 分离RESULT和INGREDIENT
+        List<BookmarkItem> results = new ArrayList<>();
+        List<BookmarkItem> ingredients = new ArrayList<>();
+        
+        for (BookmarkItem item : items) {
+            if (item.isOutput()) {
+                results.add(item);
+            } else if (item.isIngredient()) {
+                ingredients.add(item);
+            }
+        }
+        
+        if (results.isEmpty()) return;
+        
+        // 建立INGREDIENT到RESULT的映射（NEI的preferredItems）
+        // 对于每个INGREDIENT，找到能提供它的RESULT
+        java.util.Map<BookmarkItem, BookmarkItem> preferredItems = new java.util.HashMap<>();
+        collectPreferredItems(results.get(0), ingredients, results, preferredItems, new HashSet<>());
+        
+        // 重置所有非第一个配方的amount
+        boolean isFirst = true;
+        BookmarkItem firstResult = null;
+        for (BookmarkItem item : items) {
+            if (item.isOutput()) {
+                if (isFirst) {
+                    firstResult = item;
+                    isFirst = false;
+                }
+            }
+        }
+        
+        if (firstResult == null) return;
+        
+        // 从第一个配方开始计算链式需求
+        java.util.Map<BookmarkItem, Long> requiredAmount = new java.util.HashMap<>();
+        calculateChain(firstResult, firstResult.getAmount(), ingredients, results, preferredItems, requiredAmount, new HashSet<>());
+        
+        markDirty();
+    }
+    
+    /**
+     * 收集INGREDIENT到RESULT的映射
+     */
+    private void collectPreferredItems(BookmarkItem sourceResult, List<BookmarkItem> allIngredients, 
+            List<BookmarkItem> allResults, java.util.Map<BookmarkItem, BookmarkItem> preferredItems, 
+            Set<BookmarkItem> visited) {
+        
+        if (visited.contains(sourceResult)) return;
+        visited.add(sourceResult);
+        
+        // 找到属于这个RESULT配方的INGREDIENT
+        List<BookmarkItem> recipeIngredients = findRecipeIngredients(sourceResult, allIngredients);
+        
+        for (BookmarkItem ingrItem : recipeIngredients) {
+            if (preferredItems.containsKey(ingrItem)) continue;
+            
+            // 查找能提供这个INGREDIENT的RESULT
+            for (BookmarkItem resultItem : allResults) {
+                if (resultItem == sourceResult) continue;
+                if (visited.contains(resultItem)) continue;
+                
+                // 检查这个RESULT是否能提供这个INGREDIENT（itemKey相同）
+                if (resultItem.getItemKey().equals(ingrItem.getItemKey())) {
+                    preferredItems.put(ingrItem, resultItem);
+                    // 递归收集这个RESULT的配方的INGREDIENT
+                    collectPreferredItems(resultItem, allIngredients, allResults, preferredItems, visited);
+                    break;
+                }
+            }
+        }
+        
+        visited.remove(sourceResult);
+    }
+    
+    /**
+     * 找到属于某个RESULT配方的INGREDIENT（紧跟在RESULT后面的INGREDIENT）
+     */
+    private List<BookmarkItem> findRecipeIngredients(BookmarkItem result, List<BookmarkItem> allIngredients) {
+        List<BookmarkItem> recipeIngredients = new ArrayList<>();
+        List<BookmarkItem> allItems = getAllItems();
+        
+        int resultIndex = allItems.indexOf(result);
+        if (resultIndex < 0) return recipeIngredients;
+        
+        // 收集紧跟在这个RESULT后面的INGREDIENT
+        for (int i = resultIndex + 1; i < allItems.size(); i++) {
+            BookmarkItem item = allItems.get(i);
+            if (item.isOutput()) {
+                // 遇到下一个RESULT，停止
+                break;
+            }
+            if (item.isIngredient() && allIngredients.contains(item)) {
+                recipeIngredients.add(item);
+            }
+        }
+        
+        return recipeIngredients;
+    }
+    
+    /**
+     * 链式计算配方需求
+     */
+    private void calculateChain(BookmarkItem resultItem, long requiredAmount, 
+            List<BookmarkItem> allIngredients, List<BookmarkItem> allResults,
+            java.util.Map<BookmarkItem, BookmarkItem> preferredItems,
+            java.util.Map<BookmarkItem, Long> requiredAmounts,
+            Set<BookmarkItem> visited) {
+        
+        if (visited.contains(resultItem)) return;
+        visited.add(resultItem);
+        
+        // 找到这个配方的INGREDIENT
+        List<BookmarkItem> recipeIngredients = findRecipeIngredients(resultItem, allIngredients);
+        
+        // 计算这个配方需要的multiplier
+        long factor = resultItem.getFactor();
+        long multiplier = (long) Math.ceil((double) requiredAmount / factor);
+        
+        // 更新这个配方的所有物品
+        resultItem.setMultiplier(multiplier);
+        for (BookmarkItem ingr : recipeIngredients) {
+            ingr.setMultiplier(multiplier);
+        }
+        
+        // 对于每个INGREDIENT，检查是否有配方能提供它
+        for (BookmarkItem ingrItem : recipeIngredients) {
+            BookmarkItem prefResult = preferredItems.get(ingrItem);
+            if (prefResult != null) {
+                // 计算需要多少这个物品
+                long ingrNeeded = ingrItem.getAmount();
+                // 递归计算提供这个物品的配方
+                calculateChain(prefResult, ingrNeeded, allIngredients, allResults, preferredItems, requiredAmounts, visited);
+            }
+        }
+        
+        visited.remove(resultItem);
+    }
+    
+    /**
+     * 重新计算crafting chain（当开启crafting chain模式时调用）
+     * 从指定组开始，计算所有关联组的数量
+     */
+    public void recalculateCraftingChain(int groupId) {
+        // 现在只计算组内的crafting chain
+        recalculateCraftingChainInGroup(groupId);
+    }
+    
+    /**
+     * multiplier调整算法
+     */
+    private long shiftMultiplier(long multiplier, long shift, long minMultiplier) {
+        // 这样可以让数量按shift的倍数变化
+        long currentMultiplier;
+        if (shift > 0) {
+            currentMultiplier = ((multiplier + shift) / shift) * shift;
+        } else {
+            currentMultiplier = multiplier + shift;
+        }
+        
+        // 确保不小于最小值，不大于最大值
+        if (currentMultiplier <= 0 && multiplier > 1) {
+            return 1;
+        }
+        return Math.min(Integer.MAX_VALUE, Math.max(minMultiplier, currentMultiplier));
     }
     
     /**
      * 调整组的倍率
      */
     public void adjustGroupMultiplier(int groupId, double delta) {
-        BookmarkGroup group = groups.get(groupId);
-        if (group != null) {
-            group.adjustMultiplier(delta);
-            markDirty();
-        }
+        shiftGroupAmount(groupId, (long) delta);
     }
     
     /**
@@ -343,9 +648,9 @@ public class BookmarkManager {
             JsonObject groupsObj = new JsonObject();
             for (Map.Entry<Integer, BookmarkGroup> entry : groups.entrySet()) {
                 JsonObject groupObj = new JsonObject();
-                groupObj.addProperty("multiplier", entry.getValue().getMultiplier());
                 groupObj.addProperty("expanded", entry.getValue().isExpanded());
                 groupObj.addProperty("craftingChain", entry.getValue().isCraftingChainEnabled());
+                groupObj.addProperty("linkedGroupId", entry.getValue().getLinkedGroupId());
                 groupsObj.add(String.valueOf(entry.getKey()), groupObj);
             }
             root.add("groups", groupsObj);
@@ -356,7 +661,8 @@ public class BookmarkManager {
                 JsonObject itemObj = new JsonObject();
                 itemObj.addProperty("groupId", item.getGroupId());
                 itemObj.addProperty("itemKey", item.getItemKey());
-                itemObj.addProperty("baseQuantity", item.getBaseQuantity());
+                itemObj.addProperty("factor", item.getFactor());
+                itemObj.addProperty("amount", item.getAmount());
                 itemObj.addProperty("type", item.getType().ordinal());
                 itemsArray.add(itemObj);
             }
@@ -401,12 +707,17 @@ public class BookmarkManager {
                     JsonObject groupObj = entry.getValue().getAsJsonObject();
                     
                     BookmarkGroup group = new BookmarkGroup(groupId);
-                    group.setMultiplier(groupObj.get("multiplier").getAsDouble());
+                    if (groupObj.has("multiplier")) {
+                        group.setMultiplier(groupObj.get("multiplier").getAsDouble());
+                    }
                     if (groupObj.has("expanded")) {
                         group.setExpanded(groupObj.get("expanded").getAsBoolean());
                     }
                     if (groupObj.has("craftingChain")) {
                         group.setCraftingChainEnabled(groupObj.get("craftingChain").getAsBoolean());
+                    }
+                    if (groupObj.has("linkedGroupId")) {
+                        group.setLinkedGroupId(groupObj.get("linkedGroupId").getAsInt());
                     }
                     groups.put(groupId, group);
                 }
@@ -419,11 +730,25 @@ public class BookmarkManager {
                     JsonObject itemObj = elem.getAsJsonObject();
                     int groupId = itemObj.get("groupId").getAsInt();
                     String itemKey = itemObj.get("itemKey").getAsString();
-                    int baseQuantity = itemObj.get("baseQuantity").getAsInt();
+                    
+                    // 兼容旧版本：优先使用factor，否则使用baseQuantity
+                    long factor = 1;
+                    if (itemObj.has("factor")) {
+                        factor = itemObj.get("factor").getAsLong();
+                    } else if (itemObj.has("baseQuantity")) {
+                        factor = itemObj.get("baseQuantity").getAsInt();
+                    }
+                    
                     BookmarkItem.BookmarkItemType type = BookmarkItem.BookmarkItemType.values()[
                             itemObj.get("type").getAsInt()];
                     
-                    BookmarkItem item = new BookmarkItem(groupId, itemKey, baseQuantity, type);
+                    BookmarkItem item = new BookmarkItem(groupId, itemKey, factor, type);
+                    
+                    // 加载amount
+                    if (itemObj.has("amount")) {
+                        item.setAmount(itemObj.get("amount").getAsLong());
+                    }
+                    
                     bookmarkItems.add(item);
                 }
             }

@@ -4,10 +4,9 @@ import mezz.jei.gui.bookmarks.IBookmark;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * - groupId: 所属组ID
- * - itemKey: 物品唯一标识
- * - baseQuantity: 配方中的基础数量
- * - type: 类型（输出/输入/普通物品）
+ * - amount: 当前总数量
+ * - factor: 配方中每次合成的数量（基础数量）
+ *
  */
 public class BookmarkItem {
 
@@ -19,17 +18,21 @@ public class BookmarkItem {
     
     private int groupId;
     private final String itemKey;
-    private final int baseQuantity;
+
+    private long amount;      // 当前总数量
+    private final long factor; // 配方中每次合成的数量（基础数量）
+    
     private BookmarkItemType type;
     
     // 关联的JEI书签（用于渲染）
     @Nullable
     private IBookmark linkedBookmark;
     
-    public BookmarkItem(int groupId, String itemKey, int baseQuantity, BookmarkItemType type) {
+    public BookmarkItem(int groupId, String itemKey, long factor, BookmarkItemType type) {
         this.groupId = groupId;
         this.itemKey = itemKey;
-        this.baseQuantity = baseQuantity;
+        this.factor = Math.max(1, factor);
+        this.amount = this.factor; // 初始数量等于factor（即multiplier=1）
         this.type = type;
     }
     
@@ -45,8 +48,55 @@ public class BookmarkItem {
         return itemKey;
     }
     
+    /**
+     * 获取配方中每次合成的数量（基础数量）
+     */
+    public long getFactor() {
+        return factor;
+    }
+    
+    /**
+     * 获取当前总数量
+     */
+    public long getAmount() {
+        return amount;
+    }
+    
+    /**
+     * 设置当前总数量
+     */
+    public void setAmount(long amount) {
+        this.amount = Math.max(factor, amount); // 最小为factor（即multiplier=1）
+    }
+    
+    /**
+     * 获取合成次数（multiplier = amount / factor）
+     */
+    public long getMultiplier() {
+        return (long) Math.ceil((double) amount / factor);
+    }
+    
+    /**
+     * 设置合成次数，自动计算amount
+     */
+    public void setMultiplier(long multiplier) {
+        this.amount = factor * Math.max(1, multiplier);
+    }
+    
+    /**
+     * 调整合成次数
+     * @param shift 调整量（正数增加，负数减少）
+     * @return 新的multiplier
+     */
+    public long shiftMultiplier(long shift) {
+        long currentMultiplier = getMultiplier();
+        long newMultiplier = Math.max(1, currentMultiplier + shift);
+        setMultiplier(newMultiplier);
+        return newMultiplier;
+    }
+
     public int getBaseQuantity() {
-        return baseQuantity;
+        return (int) factor;
     }
     
     public BookmarkItemType getType() {
@@ -85,7 +135,9 @@ public class BookmarkItem {
         return "BookmarkItem{" +
                 "groupId=" + groupId +
                 ", itemKey='" + itemKey + '\'' +
-                ", baseQuantity=" + baseQuantity +
+                ", factor=" + factor +
+                ", amount=" + amount +
+                ", multiplier=" + getMultiplier() +
                 ", type=" + type +
                 '}';
     }

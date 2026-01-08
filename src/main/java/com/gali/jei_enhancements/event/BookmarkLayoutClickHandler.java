@@ -64,14 +64,7 @@ public class BookmarkLayoutClickHandler {
             GroupingDragHandler dragHandler = GroupingDragHandler.getInstance();
             List<IngredientListSlot> slots = getSlots(overlay);
             
-            // 右键单击：切换crafting chain模式
-            if (button == 1 && dragHandler.handleClick((int) mouseX, (int) mouseY, button, slots)) {
-                forceRefreshBookmarks(overlay);
-                event.setCanceled(true);
-                return;
-            }
-            
-            // 左键或右键拖动开始
+            // 左键或右键拖动开始（右键单击的处理移到释放时）
             if ((button == 0 || button == 1) && dragHandler.startDrag((int) mouseX, (int) mouseY, button, slots)) {
                 event.setCanceled(true);
                 return;
@@ -137,11 +130,22 @@ public class BookmarkLayoutClickHandler {
                 IBookmarkOverlay bookmarkOverlay = jeiRuntime.getBookmarkOverlay();
                 if (bookmarkOverlay instanceof BookmarkOverlay overlay) {
                     List<IngredientListSlot> slots = getSlots(overlay);
-                    dragHandler.endDrag(slots);
                     
-                    // 保存并刷新
-                    BookmarkManager.getInstance().save();
-                    forceRefreshBookmarks(overlay);
+                    // 判断是单击还是拖动（如果起始行和结束行相同，则是单击）
+                    if (button == 1 && dragHandler.isSingleClick()) {
+                        // 右键单击：切换crafting chain模式
+                        dragHandler.cancelDrag();
+                        if (dragHandler.handleClick((int) event.getMouseX(), (int) event.getMouseY(), button, slots)) {
+                            forceRefreshBookmarks(overlay);
+                        }
+                    } else {
+                        // 拖动操作
+                        dragHandler.endDrag(slots);
+                        
+                        // 保存并刷新
+                        BookmarkManager.getInstance().save();
+                        forceRefreshBookmarks(overlay);
+                    }
                 }
             }
             event.setCanceled(true);
