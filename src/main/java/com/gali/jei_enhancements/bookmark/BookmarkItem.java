@@ -17,10 +17,10 @@ public class BookmarkItem {
         INGREDIENT  // 配方输入
     }
     
-    private final int groupId;
+    private int groupId;
     private final String itemKey;
     private final int baseQuantity;
-    private final BookmarkItemType type;
+    private BookmarkItemType type;
     
     // 关联的JEI书签（用于渲染）
     @Nullable
@@ -37,6 +37,10 @@ public class BookmarkItem {
         return groupId;
     }
     
+    public void setGroupId(int groupId) {
+        this.groupId = groupId;
+    }
+    
     public String getItemKey() {
         return itemKey;
     }
@@ -47,6 +51,10 @@ public class BookmarkItem {
     
     public BookmarkItemType getType() {
         return type;
+    }
+    
+    public void setType(BookmarkItemType type) {
+        this.type = type;
     }
     
     @Nullable

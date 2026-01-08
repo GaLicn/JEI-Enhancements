@@ -3,5 +3,9 @@
   "jei_enhancements.tooltip.ctrl_shift_scroll": "Ctrl + Shift + Scroll: Adjust quantity (x64)",
   "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + Scroll: Adjust quantity (x10)",
   "jei_enhancements.tooltip.shift_a": "Shift + A: Add recipe (output + ingredients) to bookmarks",
-  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: Add recipe with item counts to bookmarks"
+  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: Add recipe with item counts to bookmarks",
+  "jei_enhancements.tooltip.group_panel_left_drag": "Left-drag: Connect rows into a group",
+  "jei_enhancements.tooltip.group_panel_right_drag": "Right-drag: Exclude rows from group",
+  "jei_enhancements.tooltip.group_panel_right_click": "Right-click: Toggle crafting chain mode ([ turns green)",
+  "jei_enhancements.tooltip.alt_click_group": "Alt + Click: Expand/collapse bookmark group"
 }

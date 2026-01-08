@@ -283,6 +283,16 @@ public class BookmarkManager {
         }
     }
     
+    /**
+     * 只删除组（不删除组内的书签项）
+     */
+    public void removeGroupOnly(int groupId) {
+        if (groupId != DEFAULT_GROUP_ID) {
+            groups.remove(groupId);
+            markDirty();
+        }
+    }
+    
 
     /**
      * 从JEI书签获取物品key
@@ -335,6 +345,7 @@ public class BookmarkManager {
                 JsonObject groupObj = new JsonObject();
                 groupObj.addProperty("multiplier", entry.getValue().getMultiplier());
                 groupObj.addProperty("expanded", entry.getValue().isExpanded());
+                groupObj.addProperty("craftingChain", entry.getValue().isCraftingChainEnabled());
                 groupsObj.add(String.valueOf(entry.getKey()), groupObj);
             }
             root.add("groups", groupsObj);
@@ -394,6 +405,9 @@ public class BookmarkManager {
                     if (groupObj.has("expanded")) {
                         group.setExpanded(groupObj.get("expanded").getAsBoolean());
                     }
+                    if (groupObj.has("craftingChain")) {
+                        group.setCraftingChainEnabled(groupObj.get("craftingChain").getAsBoolean());
+                    }
                     groups.put(groupId, group);
                 }
             }
@@ -438,6 +452,99 @@ public class BookmarkManager {
         groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
         nextGroupId = 1;
         loaded = false;
+        markDirty();
+    }
+    
+    /**
+     * 将多个书签项合并到一个组
+     * 如果这些书签项已经在同一个组中，不做任何操作
+     * 如果在不同组中，将它们合并到第一个书签项的组中（如果是默认组则创建新组）
+     */
+    public void mergeItemsIntoGroup(List<BookmarkItem> items) {
+        if (items == null || items.size() < 2) {
+            return;
+        }
+        
+        // 检查是否所有项都在同一个组
+        Set<Integer> groupIds = new HashSet<>();
+        for (BookmarkItem item : items) {
+            groupIds.add(item.getGroupId());
+        }
+        
+        if (groupIds.size() == 1 && !groupIds.contains(DEFAULT_GROUP_ID)) {
+            // 已经在同一个非默认组中，不需要合并
+            return;
+        }
+        
+        // 确定目标组ID
+        int targetGroupId;
+        BookmarkItem firstItem = items.get(0);
+        
+        if (firstItem.getGroupId() == DEFAULT_GROUP_ID) {
+            // 第一个项在默认组，创建新组
+            targetGroupId = createGroup();
+        } else {
+            // 使用第一个项的组
+            targetGroupId = firstItem.getGroupId();
+        }
+        
+        // 将所有项移动到目标组
+        for (BookmarkItem item : items) {
+            if (item.getGroupId() != targetGroupId) {
+                int oldGroupId = item.getGroupId();
+                item.setGroupId(targetGroupId);
+                
+                // 如果旧组变空了，删除它
+                if (oldGroupId != DEFAULT_GROUP_ID) {
+                    boolean hasOtherItems = false;
+                    for (BookmarkItem other : bookmarkItems) {
+                        if (other.getGroupId() == oldGroupId && !items.contains(other)) {
+                            hasOtherItems = true;
+                            break;
+                        }
+                    }
+                    if (!hasOtherItems) {
+                        groups.remove(oldGroupId);
+                    }
+                }
+            }
+        }
+        
+        // 设置第一个项为输出（组头）
+        firstItem.setType(BookmarkItem.BookmarkItemType.RESULT);
+        
+        // 其他项设置为原料
+        for (int i = 1; i < items.size(); i++) {
+            items.get(i).setType(BookmarkItem.BookmarkItemType.INGREDIENT);
+        }
+        
+        markDirty();
+    }
+    
+    /**
+     * 将书签项从组中分离出来（移动到默认组）
+     */
+    public void separateItemFromGroup(BookmarkItem item) {
+        if (item == null || item.getGroupId() == DEFAULT_GROUP_ID) {
+            return;
+        }
+        
+        int oldGroupId = item.getGroupId();
+        item.setGroupId(DEFAULT_GROUP_ID);
+        item.setType(BookmarkItem.BookmarkItemType.ITEM);
+        
+        // 检查旧组是否还有其他项
+        List<BookmarkItem> remainingItems = getGroupItems(oldGroupId);
+        if (remainingItems.isEmpty()) {
+            groups.remove(oldGroupId);
+        } else if (remainingItems.size() == 1) {
+            // 只剩一个项，也移到默认组
+            BookmarkItem lastItem = remainingItems.get(0);
+            lastItem.setGroupId(DEFAULT_GROUP_ID);
+            lastItem.setType(BookmarkItem.BookmarkItemType.ITEM);
+            groups.remove(oldGroupId);
+        }
+        
         markDirty();
     }
 }

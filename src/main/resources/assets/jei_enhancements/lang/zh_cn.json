@@ -3,5 +3,9 @@
   "jei_enhancements.tooltip.ctrl_shift_scroll": "Ctrl + Shift + 滚轮: 调整数量 (x64)",
   "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + 滚轮: 调整数量 (x10)",
   "jei_enhancements.tooltip.shift_a": "Shift + A: 添加配方（输出+原材料）到书签",
-  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: 添加配方并保留物品数量到书签"
+  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: 添加配方并保留物品数量到书签",
+  "jei_enhancements.tooltip.group_panel_left_drag": "左键拖动: 将多行连接成一个组",
+  "jei_enhancements.tooltip.group_panel_right_drag": "右键拖动: 将行从组中排除",
+  "jei_enhancements.tooltip.group_panel_right_click": "右键点击: 切换合成链模式（[变绿）",
+  "jei_enhancements.tooltip.alt_click_group": "Alt + 点击: 展开/折叠书签组"
 }

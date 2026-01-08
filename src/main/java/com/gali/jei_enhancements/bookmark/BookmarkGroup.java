@@ -1,16 +1,19 @@
 package com.gali.jei_enhancements.bookmark;
 
 /**
+ * 书签组（NEI风格）
  * 每个组有：
  * - groupId: 唯一标识
  * - multiplier: 倍率（用于按比例调整数量）
  * - expanded: 是否展开显示
+ * - craftingChainEnabled: 是否开启crafting chain模式（[变绿）
  */
 public class BookmarkGroup {
     
     private final int groupId;
     private double multiplier = 1.0;
     private boolean expanded = true;
+    private boolean craftingChainEnabled = false;  // NEI的crafting chain模式
     
     public BookmarkGroup(int groupId) {
         this.groupId = groupId;
@@ -42,5 +45,21 @@ public class BookmarkGroup {
     
     public void toggleExpanded() {
         this.expanded = !this.expanded;
+    }
+    
+    /**
+     * 是否开启了crafting chain模式
+     * 开启后[符号变绿，会计算组内配方的倍率关系
+     */
+    public boolean isCraftingChainEnabled() {
+        return craftingChainEnabled;
+    }
+    
+    public void setCraftingChainEnabled(boolean enabled) {
+        this.craftingChainEnabled = enabled;
+    }
+    
+    public void toggleCraftingChain() {
+        this.craftingChainEnabled = !this.craftingChainEnabled;
     }
 }
