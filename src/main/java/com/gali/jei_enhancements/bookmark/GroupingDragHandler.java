@@ -385,27 +385,54 @@ public class GroupingDragHandler {
     }
     
     /**
-     * 从下往上拖动：将选中的行从组中分离出来（移到默认组）
+     * 从下往上拖动：拆分组，让每个配方恢复成独立的组
+     * 不是移到默认组，而是为每个配方创建新的独立组
      */
     private void separateRowsFromGroup(int minRow, int maxRow, List<IngredientListSlot> slots) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        Set<Integer> affectedGroupIds = new HashSet<>();
+        
+        // 收集选中范围内的所有配方（每个RESULT开头的配方）
+        List<List<BookmarkItem>> recipes = new ArrayList<>();
+        List<BookmarkItem> currentRecipe = null;
         
         for (int row = minRow; row <= maxRow; row++) {
             List<BookmarkItem> rowItems = findAllBookmarkItemsAtRow(row, slots);
             for (BookmarkItem item : rowItems) {
-                if (item.getGroupId() != BookmarkManager.DEFAULT_GROUP_ID) {
-                    affectedGroupIds.add(item.getGroupId());
-                    item.setGroupId(BookmarkManager.DEFAULT_GROUP_ID);
+                if (item.isOutput()) {
+                    // 新配方开始
+                    if (currentRecipe != null && !currentRecipe.isEmpty()) {
+                        recipes.add(currentRecipe);
+                    }
+                    currentRecipe = new ArrayList<>();
+                    currentRecipe.add(item);
+                } else if (item.isIngredient() && currentRecipe != null) {
+                    currentRecipe.add(item);
                 }
             }
         }
         
-        // 清理空组
-        for (int groupId : affectedGroupIds) {
-            List<BookmarkItem> remaining = manager.getGroupItems(groupId);
-            if (remaining.isEmpty()) {
-                manager.removeGroupOnly(groupId);
+        // 添加最后一个配方
+        if (currentRecipe != null && !currentRecipe.isEmpty()) {
+            recipes.add(currentRecipe);
+        }
+        
+        // 如果只有一个配方或没有配方，不需要拆分
+        if (recipes.size() <= 1) {
+            return;
+        }
+        
+        // 为每个配方创建独立的组（第一个配方保持原组ID）
+        boolean isFirst = true;
+        for (List<BookmarkItem> recipe : recipes) {
+            if (isFirst) {
+                isFirst = false;
+                continue; // 第一个配方保持原组ID
+            }
+            
+            // 为这个配方创建新组
+            int newGroupId = manager.createGroup();
+            for (BookmarkItem item : recipe) {
+                item.setGroupId(newGroupId);
             }
         }
         
