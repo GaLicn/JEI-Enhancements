@@ -53,18 +53,8 @@ public abstract class IngredientListRendererMixin {
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             return;
         }
-        
-        // 检查是否是书签列表（通过检查元素是否有书签信息）
-        boolean isBookmarkList = false;
-        for (int i = startIndex; i < ingredientList.size() && i < startIndex + 5; i++) {
-            IElement<?> element = ingredientList.get(i);
-            if (element.getBookmark().isPresent()) {
-                isBookmarkList = true;
-                break;
-            }
-        }
-        
-        if (!isBookmarkList) {
+
+        if (!isManagedBookmarkList(ingredientList, startIndex)) {
             return;
         }
 
@@ -261,5 +251,38 @@ public abstract class IngredientListRendererMixin {
         }
         
         return result;
+    }
+
+    /**
+     * 检查元素是否在BookmarkManager中有记录
+     */
+    private boolean isManagedBookmarkList(List<IElement<?>> ingredientList, int startIndex) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        
+        // 检查前几个有书签信息的元素是否在BookmarkManager中
+        int checkedCount = 0;
+        int managedCount = 0;
+        
+        for (int i = startIndex; i < ingredientList.size() && checkedCount < 5; i++) {
+            IElement<?> element = ingredientList.get(i);
+            Optional<IBookmark> bookmarkOpt = element.getBookmark();
+            
+            if (bookmarkOpt.isPresent()) {
+                checkedCount++;
+                // 检查这个书签是否在BookmarkManager中
+                BookmarkItem item = manager.findBookmarkItem(bookmarkOpt.get());
+                if (item != null) {
+                    managedCount++;
+                }
+            }
+        }
+        
+        // 如果没有找到任何书签元素，不是书签列表
+        if (checkedCount == 0) {
+            return false;
+        }
+        
+
+        return managedCount > 0;
     }
 }
