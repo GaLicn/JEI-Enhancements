@@ -86,7 +86,7 @@ public class BookmarkScrollHandler {
 
         // Ctrl+Alt: 以更大的步进调整 (10)
         if (Screen.hasAltDown()) {
-            shift *= 10;
+            shift *= 64;
         }
 
         // 调整数量

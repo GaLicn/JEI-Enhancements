@@ -201,19 +201,24 @@ public class BookmarkQuantityRenderer {
         int x = area.x();
         int y = area.y();
         
-        // 在右下角渲染数量
+        // 计算文字宽度
         int textWidth = font.width(quantityStr);
-        int textX = x + 17 - textWidth;
-        int textY = y + 9;
+        
+        // 缩放0.5倍
+        float scale = 0.5f;
+        // 在右下角渲染数量（调整位置以适应缩放）
+        float textX = (x + 17) * 2 - textWidth;  // 右对齐
+        float textY = (y + 12) * 2;  // 底部位置
         
         // 绘制阴影文字
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(0, 0, 200);
+        guiGraphics.pose().scale(scale, scale, 1.0f);
         
         // 绘制阴影
-        guiGraphics.drawString(font, quantityStr, textX + 1, textY + 1, 0x3F3F3F, false);
+        guiGraphics.drawString(font, quantityStr, (int)(textX + 1), (int)(textY + 1), 0x3F3F3F, false);
         // 绘制主文字 (使用绿色来区分自定义数量)
-        guiGraphics.drawString(font, quantityStr, textX, textY, 0x55FF55, false);
+        guiGraphics.drawString(font, quantityStr, (int)textX, (int)textY, 0x55FF55, false);
         
         guiGraphics.pose().popPose();
     }
@@ -228,11 +233,17 @@ public class BookmarkQuantityRenderer {
         
         String indicator = "+" + (groupSize - 1);
         
+        // 缩放0.5倍
+        float scale = 0.5f;
+        float textX = x * 2 + 2;  // 左上角位置
+        float textY = y * 2 + 2;
+        
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(0, 0, 200);
+        guiGraphics.pose().scale(scale, scale, 1.0f);
         
-        guiGraphics.drawString(font, indicator, x + 1, y + 1, 0x3F3F3F, false);
-        guiGraphics.drawString(font, indicator, x, y, COLLAPSED_INDICATOR_COLOR, false);
+        guiGraphics.drawString(font, indicator, (int)(textX + 1), (int)(textY + 1), 0x3F3F3F, false);
+        guiGraphics.drawString(font, indicator, (int)textX, (int)textY, COLLAPSED_INDICATOR_COLOR, false);
         
         guiGraphics.pose().popPose();
     }
