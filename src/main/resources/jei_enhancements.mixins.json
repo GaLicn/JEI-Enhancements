@@ -7,7 +7,9 @@
     "BookmarkOverlayMixin",
     "RecipesGuiMixin",
     "IngredientListRendererMixin",
-    "BookmarkListMixin"
+    "BookmarkListMixin",
+    "IngredientGridWithNavigationMixin",
+    "IngredientGridPagedMixin"
   ],
   "injectors": {
     "defaultRequire": 1

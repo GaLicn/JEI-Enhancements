@@ -99,24 +99,58 @@ public abstract class IngredientListRendererMixin {
             }
         }
 
-        List<List<IElement<?>>> groupedElements = groupElements(ingredientList, startIndex);
+        // 先对所有元素进行分组（从索引0开始，获取完整的分组信息）
+        List<List<IElement<?>>> allGroupedElements = groupElements(ingredientList, 0);
         
+        if (allGroupedElements.isEmpty()) {
+            ci.cancel();
+            return;
+        }
+        
+        // 计算startIndex对应的组索引
+        // 在垂直模式下，startIndex应该对应某个组的第一个元素
+        int startGroupIndex = 0;
+        int cumulativeElementCount = 0;
+        
+        for (int i = 0; i < allGroupedElements.size(); i++) {
+            List<IElement<?>> group = allGroupedElements.get(i);
+            int nextCumulativeCount = cumulativeElementCount + group.size();
+            
+            // 如果startIndex落在这个组的范围内，从这个组开始
+            if (startIndex < nextCumulativeCount) {
+                startGroupIndex = i;
+                break;
+            }
+            
+            cumulativeElementCount = nextCumulativeCount;
+            
+            // 如果已经遍历完所有组，从最后一个组开始
+            if (i == allGroupedElements.size() - 1) {
+                startGroupIndex = i;
+            }
+        }
+        
+        // 从startGroupIndex开始显示组
         int currentRow = 0;
         int currentCol = 0;
         
-        for (List<IElement<?>> group : groupedElements) {
+        for (int groupIdx = startGroupIndex; groupIdx < allGroupedElements.size(); groupIdx++) {
+            List<IElement<?>> group = allGroupedElements.get(groupIdx);
+            
             if (currentRow >= rows) {
                 break;
             }
             
-            // 每个组从新行开始
-            if (currentCol != 0) {
+            // 每个组从新行开始（除了第一个组）
+            if (groupIdx > startGroupIndex && currentCol != 0) {
                 currentRow++;
                 currentCol = 0;
                 if (currentRow >= rows) {
                     break;
                 }
             }
+            
+            boolean groupHasVisibleElements = false;
             
             for (IElement<?> element : group) {
                 if (!element.isVisible()) {
@@ -137,12 +171,13 @@ public abstract class IngredientListRendererMixin {
                     IngredientListSlot slot = activeSlots.get(slotIndex);
                     slot.setElement(element);
                     addRenderElement(slot);
+                    groupHasVisibleElements = true;
                 }
                 currentCol++;
             }
             
-            // 组结束后，准备下一行
-            if (!group.isEmpty()) {
+            // 组结束后，如果有可见元素，准备下一行
+            if (groupHasVisibleElements && currentRow < rows) {
                 currentRow++;
                 currentCol = 0;
             }
@@ -152,7 +187,7 @@ public abstract class IngredientListRendererMixin {
     }
     
     /**
-     * 按组分组元素（NEI风格）
+     * 按组分组元素
      * 每个RESULT类型的项都开始新的一行（即使它们有相同的groupId）
      */
     private List<List<IElement<?>>> groupElements(List<IElement<?>> ingredientList, int startIndex) {
