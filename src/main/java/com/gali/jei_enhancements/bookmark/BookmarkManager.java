@@ -403,11 +403,11 @@ public class BookmarkManager {
     /**
      * 重新计算组内的crafting chain
      * 
-     * 核心逻辑
+     * 核心逻辑（参考NEI的RecipeChainMath.refresh）：
      * 1. 建立INGREDIENT到RESULT的映射（preferredItems）
      * 2. 从顶层配方开始，计算每个INGREDIENT的需求量
      * 3. 如果某个INGREDIENT有对应的RESULT能提供，累加需求量到那个RESULT
-     * 4. 根据累加后的需求量计算每个配方需要的合成次数
+     * 4. 只有当需求量超过当前产出量时，才增加合成次数
      */
     public void recalculateCraftingChainInGroup(int groupId) {
         BookmarkGroup group = groups.get(groupId);
@@ -442,30 +442,37 @@ public class BookmarkManager {
         // 用于累加每个RESULT的需求量
         java.util.Map<BookmarkItem, Long> requiredAmount = new java.util.HashMap<>();
         
-        // 初始化：顶层配方的需求量就是它当前的amount
-        long topLevelAmount = firstResult.getAmount();
+        // 用于跟踪每个RESULT当前的产出量（计算过程中使用）
+        java.util.Map<BookmarkItem, Long> currentAmount = new java.util.HashMap<>();
         
-        // 从顶层配方开始，递归计算所有配方的需求量
-        calculateRequiredAmounts(firstResult, topLevelAmount, ingredients, preferredItems, requiredAmount, new HashSet<>());
-        
-        // 根据累加后的需求量，更新每个配方的multiplier
+        // 初始化：非顶层配方的产出量为0
         for (BookmarkItem result : results) {
             if (result == firstResult) {
-                // 顶层配方保持原来的multiplier
-                continue;
+                currentAmount.put(result, result.getAmount());
+            } else {
+                currentAmount.put(result, 0L);
             }
+        }
+        
+        // 顶层配方的multiplier
+        long topMultiplier = firstResult.getMultiplier();
+        
+        // 从顶层配方开始，递归计算所有配方的需求量
+        calculateChainRequirements(firstResult, topMultiplier, ingredients, preferredItems, 
+                requiredAmount, currentAmount, new HashSet<>());
+        
+        // 最后，根据计算结果更新所有配方的multiplier
+        for (BookmarkItem result : results) {
+            if (result == firstResult) continue;
             
-            // 获取这个RESULT的累计需求量
-            long totalRequired = requiredAmount.getOrDefault(result, 0L);
-            if (totalRequired > 0) {
-                // 计算需要多少次合成
-                long factor = result.getFactor();
-                long multiplier = (long) Math.ceil((double) totalRequired / factor);
-                
-                // 更新这个配方的所有物品
+            long amount = currentAmount.getOrDefault(result, 0L);
+            if (amount > 0) {
+                long multiplier = (long) Math.ceil((double) amount / result.getFactor());
                 result.setMultiplier(multiplier);
-                List<BookmarkItem> recipeIngredients = findRecipeIngredients(result, ingredients);
-                for (BookmarkItem ingr : recipeIngredients) {
+                
+                // 同步更新这个配方的INGREDIENT
+                List<BookmarkItem> recipeIngrs = findRecipeIngredients(result, ingredients);
+                for (BookmarkItem ingr : recipeIngrs) {
                     ingr.setMultiplier(multiplier);
                 }
             }
@@ -475,12 +482,18 @@ public class BookmarkManager {
     }
     
     /**
-     * 递归计算每个RESULT的需求量
+     * 递归计算配方链的需求量（参考NEI的calculateSuitableRecipe）
+     * 
+     * 关键逻辑：
+     * 1. 累加需求量到requiredAmount
+     * 2. 只有当需求量超过当前产出量时，才增加合成次数（shift）
+     * 3. 增加合成次数后，递归处理该配方的INGREDIENT
      */
-    private void calculateRequiredAmounts(BookmarkItem resultItem, long requiredForThis,
+    private void calculateChainRequirements(BookmarkItem resultItem, long multiplier,
             List<BookmarkItem> allIngredients,
             java.util.Map<BookmarkItem, BookmarkItem> preferredItems,
             java.util.Map<BookmarkItem, Long> requiredAmount,
+            java.util.Map<BookmarkItem, Long> currentAmount,
             Set<BookmarkItem> visited) {
         
         if (visited.contains(resultItem)) return;
@@ -488,10 +501,6 @@ public class BookmarkManager {
         
         // 找到这个配方的INGREDIENT
         List<BookmarkItem> recipeIngredients = findRecipeIngredients(resultItem, allIngredients);
-        
-        // 计算这个配方需要的合成次数
-        long factor = resultItem.getFactor();
-        long multiplier = (long) Math.ceil((double) requiredForThis / factor);
         
         // 对于每个INGREDIENT，检查是否有配方能提供它
         for (BookmarkItem ingrItem : recipeIngredients) {
@@ -501,13 +510,24 @@ public class BookmarkManager {
                 long ingrNeeded = ingrItem.getFactor() * multiplier;
                 
                 // 累加到提供这个物品的RESULT的需求量上
-                long currentRequired = requiredAmount.getOrDefault(prefResult, 0L);
-                requiredAmount.put(prefResult, currentRequired + ingrNeeded);
+                long prevRequired = requiredAmount.getOrDefault(prefResult, 0L);
+                long newRequired = prevRequired + ingrNeeded;
+                requiredAmount.put(prefResult, newRequired);
                 
-                // 递归计算提供这个物品的配方
-                // 注意：这里传入的是累加后的总需求量
-                calculateRequiredAmounts(prefResult, requiredAmount.get(prefResult), 
-                        allIngredients, preferredItems, requiredAmount, visited);
+                // 计算需要增加多少合成次数（NEI的shift计算）
+                // shift = ceil((requiredAmount - currentAmount) / factor)
+                long prevAmount = currentAmount.getOrDefault(prefResult, 0L);
+                long shift = (long) Math.ceil((double)(newRequired - prevAmount) / prefResult.getFactor());
+                
+                if (shift > 0) {
+                    // 增加这个配方的产出量
+                    long newAmount = prevAmount + shift * prefResult.getFactor();
+                    currentAmount.put(prefResult, newAmount);
+                    
+                    // 递归处理这个配方的INGREDIENT（只传入新增的shift）
+                    calculateChainRequirements(prefResult, shift, allIngredients, preferredItems, 
+                            requiredAmount, currentAmount, visited);
+                }
             }
         }
         
