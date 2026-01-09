@@ -9,7 +9,8 @@
     "IngredientListRendererMixin",
     "BookmarkListMixin",
     "IngredientGridWithNavigationMixin",
-    "IngredientGridPagedMixin"
+    "IngredientGridPagedMixin",
+    "IngredientGridMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -1,11 +1,17 @@
 {
-  "jei_enhancements.tooltip.ctrl_scroll": "Ctrl + 滚轮: 调整书签数量",
+  "jei_enhancements.tooltip.ctrl_scroll": "Ctrl + 滚轮: 调整数量",
   "jei_enhancements.tooltip.ctrl_shift_scroll": "Ctrl + Shift + 滚轮: 调整数量 (x64)",
-  "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + 滚轮: 调整数量 (x10)",
+  "jei_enhancements.tooltip.ctrl_alt_scroll": "Ctrl + Alt + 滚轮: 按一组调整数量",
   "jei_enhancements.tooltip.shift_a": "Shift + A: 添加配方（输出+原材料）到书签",
-  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: 添加配方并保留物品数量到书签",
+  "jei_enhancements.tooltip.ctrl_shift_a": "Ctrl + Shift + A: 将配方按照组完整添加到书签",
   "jei_enhancements.tooltip.group_panel_left_drag": "左键拖动: 将多行连接成一个组",
   "jei_enhancements.tooltip.group_panel_right_drag": "右键拖动: 将行从组中排除",
   "jei_enhancements.tooltip.group_panel_right_click": "右键点击: 切换合成链模式（[变绿）",
-  "jei_enhancements.tooltip.alt_click_group": "Alt + 点击: 展开/折叠书签组"
+  "jei_enhancements.tooltip.alt_click_group": "Alt + 点击: 展开/折叠书签组",
+  "jei_enhancements.tooltip.header": "--- 操作说明 ---",
+  "jei_enhancements.tooltip.hold_alt": "按住 Alt 查看操作说明",
+  "jei_enhancements.tooltip.left_drag_down": "左键从上往下拖动: 合并组",
+  "jei_enhancements.tooltip.left_drag_up": "左键从下往上拖动: 分解组",
+  "jei_enhancements.tooltip.right_drag": "右键拖动: 删除组",
+  "jei_enhancements.tooltip.right_click_bracket": "右键 [: 启用合成链模式，数量按配方比例联动"
 }
