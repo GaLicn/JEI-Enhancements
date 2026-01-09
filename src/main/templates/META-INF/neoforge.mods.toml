@@ -46,7 +46,7 @@ authors="GaLi"
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''
-JEI Enhancements
+Enhances JEI with powerful bookmark management, recipe grouping, and intuitive quantity controls for a smoother crafting experience.
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
