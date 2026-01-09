@@ -13,5 +13,6 @@
   "jei_enhancements.tooltip.left_drag_down": "Left-drag down: Merge groups",
   "jei_enhancements.tooltip.left_drag_up": "Left-drag up: Split group",
   "jei_enhancements.tooltip.right_drag": "Right-drag: Delete group",
-  "jei_enhancements.tooltip.right_click_bracket": "Right-click [: Enable chain mode, quantities scale by recipe ratio"
+  "jei_enhancements.tooltip.right_click_bracket": "Right-click [: Enable chain mode, quantities scale by recipe ratio",
+  "jei_enhancements.tooltip.click_page": "Click page number: Toggle vertical/horizontal layout"
 }

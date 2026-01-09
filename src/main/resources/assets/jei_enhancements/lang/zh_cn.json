@@ -13,5 +13,6 @@
   "jei_enhancements.tooltip.left_drag_down": "左键从上往下拖动: 合并组",
   "jei_enhancements.tooltip.left_drag_up": "左键从下往上拖动: 分解组",
   "jei_enhancements.tooltip.right_drag": "右键拖动: 删除组",
-  "jei_enhancements.tooltip.right_click_bracket": "右键 [: 启用合成链模式，数量按配方比例联动"
+  "jei_enhancements.tooltip.right_click_bracket": "右键 [: 启用合成链模式，数量按配方比例联动",
+  "jei_enhancements.tooltip.click_page": "点击页码: 切换垂直/水平布局"
 }

@@ -81,6 +81,7 @@ public abstract class IngredientGridMixin {
             tooltip.add(Component.translatable("jei_enhancements.tooltip.left_drag_up").withStyle(style -> style.withColor(0xAAAAAA)));
             tooltip.add(Component.translatable("jei_enhancements.tooltip.right_drag").withStyle(style -> style.withColor(0xAAAAAA)));
             tooltip.add(Component.translatable("jei_enhancements.tooltip.right_click_bracket").withStyle(style -> style.withColor(0xAAAAAA)));
+            tooltip.add(Component.translatable("jei_enhancements.tooltip.click_page").withStyle(style -> style.withColor(0xAAAAAA)));
         } else if (bookmarkOpt.isPresent()) {
             // 只有书签才显示Alt提示
             tooltip.add(Component.empty());
