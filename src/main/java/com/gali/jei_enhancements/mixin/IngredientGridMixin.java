@@ -1,5 +1,7 @@
 package com.gali.jei_enhancements.mixin;
 
+import com.gali.jei_enhancements.bookmark.BookmarkItem;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
 import mezz.jei.api.ingredients.IIngredientType;
@@ -13,6 +15,7 @@ import mezz.jei.gui.overlay.elements.IElement;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -51,6 +54,20 @@ public abstract class IngredientGridMixin {
         // 检查是否是书签
         Optional<IBookmark> bookmarkOpt = element.getBookmark();
         
+        // 如果按住Shift，显示书签数量的组数信息（仅对书签有效）
+        if (Screen.hasShiftDown() && bookmarkOpt.isPresent()) {
+            IBookmark bookmark = bookmarkOpt.get();
+            BookmarkManager manager = BookmarkManager.getInstance();
+            BookmarkItem item = manager.findBookmarkItem(bookmark);
+            
+            if (item != null && item.getAmount() > 0) {
+                String countDetails = getCountDetails(typedIngredient, item.getAmount());
+                if (countDetails != null) {
+                    tooltip.add(Component.literal(countDetails).withStyle(style -> style.withColor(0x55FFFF)));
+                }
+            }
+        }
+        
         // 如果按住Alt，添加操作说明
         if (Screen.hasAltDown() && bookmarkOpt.isPresent()) {
             tooltip.add(Component.empty());
@@ -72,5 +89,55 @@ public abstract class IngredientGridMixin {
         
         tooltip.draw(guiGraphics, mouseX, mouseY, typedIngredient, ingredientRenderer, ingredientManager);
         ci.cancel();
+    }
+    
+    /**
+     * 获取数量的组数详情
+     */
+    private <T> String getCountDetails(ITypedIngredient<T> typedIngredient, long quantity) {
+        // 获取最大堆叠数
+        int maxStackSize = 64; // 默认值
+        
+        Optional<ItemStack> itemStackOpt = typedIngredient.getItemStack();
+        if (itemStackOpt.isPresent()) {
+            maxStackSize = itemStackOpt.get().getMaxStackSize();
+        } else {
+            // 流体/化学品使用1000L作为一组
+            String typeUid = typedIngredient.getType().getUid();
+            if (typeUid.contains("fluid") || typeUid.contains("chemical") || typeUid.contains("gas") || typeUid.contains("slurry")) {
+                maxStackSize = 1000;
+                return getFluidCountDetails(quantity, maxStackSize);
+            }
+        }
+        
+        if (maxStackSize > 1 && quantity > maxStackSize) {
+            long stacks = quantity / maxStackSize;
+            long remainder = quantity % maxStackSize;
+            
+            if (remainder > 0) {
+                return String.format("%d = %d × %d + %d", quantity, stacks, maxStackSize, remainder);
+            } else {
+                return String.format("%d = %d × %d", quantity, stacks, maxStackSize);
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 获取流体数量的组数详情
+     */
+    private String getFluidCountDetails(long amount, int bucketSize) {
+        if (amount > bucketSize) {
+            long buckets = amount / bucketSize;
+            long remainder = amount % bucketSize;
+            
+            if (remainder > 0) {
+                return String.format("%dL = %d × %dL + %dL", amount, buckets, bucketSize, remainder);
+            } else {
+                return String.format("%dL = %d × %dL", amount, buckets, bucketSize);
+            }
+        }
+        return null;
     }
 }
