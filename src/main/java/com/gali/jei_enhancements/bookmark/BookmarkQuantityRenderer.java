@@ -1,7 +1,9 @@
 package com.gali.jei_enhancements.bookmark;
 
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
+import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
 import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
@@ -9,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -194,7 +197,11 @@ public class BookmarkQuantityRenderer {
             return;
         }
         
-        String quantityStr = formatQuantity(quantity);
+        // 检测是否是流体/化学品类型
+        boolean isFluidOrChemical = isFluidOrChemical(bookmark);
+        
+        // 格式化数量字符串
+        String quantityStr = formatQuantity(quantity, isFluidOrChemical);
         
         // 获取渲染区域
         var area = slot.getRenderArea();
@@ -206,9 +213,16 @@ public class BookmarkQuantityRenderer {
         
         // 缩放0.5倍
         float scale = 0.5f;
-        // 在右下角渲染数量（调整位置以适应缩放）
-        float textX = (x + 17) * 2 - textWidth;  // 右对齐
+        float textX;
         float textY = (y + 12) * 2;  // 底部位置
+        
+        if (isFluidOrChemical) {
+            // 流体/化学品：左下角显示
+            textX = x * 2 + 2;
+        } else {
+            // 固体：右下角显示
+            textX = (x + 17) * 2 - textWidth;
+        }
         
         // 绘制阴影文字
         guiGraphics.pose().pushPose();
@@ -221,6 +235,29 @@ public class BookmarkQuantityRenderer {
         guiGraphics.drawString(font, quantityStr, (int)textX, (int)textY, 0x55FF55, false);
         
         guiGraphics.pose().popPose();
+    }
+    
+    /**
+     * 检测书签是否是流体或化学品类型
+     */
+    private static boolean isFluidOrChemical(IBookmark bookmark) {
+        if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
+            ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
+            Object obj = ingredient.getIngredient();
+            
+            // 如果不是ItemStack，就是流体或化学品
+            if (!(obj instanceof ItemStack)) {
+                return true;
+            }
+            
+            // 检查类型UID
+            String typeUid = ingredient.getType().getUid().toString();
+            if (typeUid.contains("fluid") || typeUid.contains("chemical") || typeUid.contains("gas") 
+                    || typeUid.contains("slurry") || typeUid.contains("pigment") || typeUid.contains("infuse")) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
@@ -250,15 +287,19 @@ public class BookmarkQuantityRenderer {
     
     /**
      * 格式化数量显示
+     * @param quantity 数量
+     * @param isFluid 是否是流体/化学品
      */
-    private static String formatQuantity(int quantity) {
+    private static String formatQuantity(int quantity, boolean isFluid) {
+        String suffix = isFluid ? "L" : "";
+        
         if (quantity >= 1000000) {
-            return String.format("%.1fM", quantity / 1000000.0);
+            return String.format("%.1fM%s", quantity / 1000000.0, suffix);
         } else if (quantity >= 10000) {
-            return String.format("%.0fK", quantity / 1000.0);
+            return String.format("%.0fk%s", quantity / 1000.0, suffix);
         } else if (quantity >= 1000) {
-            return String.format("%.1fK", quantity / 1000.0);
+            return String.format("%.1fk%s", quantity / 1000.0, suffix);
         }
-        return String.valueOf(quantity);
+        return quantity + suffix;
     }
 }

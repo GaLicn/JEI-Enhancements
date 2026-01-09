@@ -194,6 +194,32 @@ public class RecipeBookmarkHelper {
         if (obj instanceof ItemStack stack) {
             return stack.getCount();
         }
+        
+        // 尝试获取流体/化学品的数量
+        try {
+            // 尝试获取getAmount方法（FluidStack, ChemicalStack等）
+            java.lang.reflect.Method getAmount = null;
+            try {
+                getAmount = obj.getClass().getMethod("getAmount");
+            } catch (NoSuchMethodException e) {
+                // 尝试其他可能的方法名
+                try {
+                    getAmount = obj.getClass().getMethod("amount");
+                } catch (NoSuchMethodException e2) {
+                    // ignore
+                }
+            }
+            
+            if (getAmount != null) {
+                Object result = getAmount.invoke(obj);
+                if (result instanceof Number num) {
+                    return num.intValue();
+                }
+            }
+        } catch (Exception e) {
+            // 反射失败，返回默认值
+        }
+        
         return 1;
     }
 }
