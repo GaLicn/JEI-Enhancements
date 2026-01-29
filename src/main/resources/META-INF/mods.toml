@@ -61,3 +61,11 @@ mandatory = true
 versionRange = "${minecraft_version_range}"
 ordering = "NONE"
 side = "BOTH"
+
+# JEI dependency
+[[dependencies."${mod_id}"]]
+modId = "jei"
+mandatory = true
+versionRange = "[15.20.0,)"
+ordering = "NONE"
+side = "BOTH"
