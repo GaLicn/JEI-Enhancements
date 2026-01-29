@@ -2,10 +2,9 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.gali.jei_enhancements.mixin",
-  "compatibilityLevel": "JAVA_8",
+  "compatibilityLevel": "JAVA_17",
   "refmap": "jei_enhancements.refmap.json",
-  "mixins": [
-  ],
+  "mixins": [],
   "client": [
   ],
   "injectors": {
