@@ -6,6 +6,13 @@
   "refmap": "jei_enhancements.refmap.json",
   "mixins": [],
   "client": [
+    "BookmarkOverlayMixin",
+    "RecipesGuiMixin",
+    "IngredientListRendererMixin",
+    "BookmarkListMixin",
+    "IngredientGridWithNavigationMixin",
+    "IngredientGridPagedMixin",
+    "IngredientGridMixin"
   ],
   "injectors": {
     "defaultRequire": 1

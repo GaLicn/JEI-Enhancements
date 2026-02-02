@@ -1,0 +1,74 @@
+package com.gali.jei_enhancements.jei;
+
+import com.gali.jei_enhancements.JEIEnhancements;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import com.gali.jei_enhancements.event.BookmarkLayoutClickHandler;
+import com.gali.jei_enhancements.event.BookmarkScrollHandler;
+import mezz.jei.api.IModPlugin;
+import mezz.jei.api.JeiPlugin;
+import mezz.jei.api.runtime.IIngredientManager;
+import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * JEI插件，用于获取JEI运行时实例和相关组件
+ */
+@JeiPlugin
+public class JEIEnhancementsPlugin implements IModPlugin {
+
+    private static final ResourceLocation UID = ResourceLocation.fromNamespaceAndPath(JEIEnhancements.MODID, "main");
+
+    @Nullable
+    private static IJeiRuntime jeiRuntime;
+    @Nullable
+    private static IIngredientManager ingredientManager;
+
+    @Override
+    public ResourceLocation getPluginUid() {
+        return UID;
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime runtime) {
+        jeiRuntime = runtime;
+        ingredientManager = runtime.getIngredientManager();
+
+        BookmarkScrollHandler.setJeiRuntime(runtime);
+        BookmarkLayoutClickHandler.setJeiRuntime(runtime);
+
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        // 保存书签数据
+        BookmarkManager.getInstance().save();
+        
+        jeiRuntime = null;
+        ingredientManager = null;
+        
+        BookmarkScrollHandler.setJeiRuntime(null);
+        BookmarkLayoutClickHandler.setJeiRuntime(null);
+    }
+
+    @Nullable
+    public static IJeiRuntime getJeiRuntime() {
+        return jeiRuntime;
+    }
+
+    @Nullable
+    public static IIngredientManager getIngredientManager() {
+        return ingredientManager;
+    }
+
+    @Nullable
+    public static RegistryAccess getRegistryAccess() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level != null) {
+            return mc.level.registryAccess();
+        }
+        return null;
+    }
+}
