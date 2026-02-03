@@ -235,52 +235,24 @@ public class BookmarkLayoutClickHandler {
             Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
             contentsField.setAccessible(true);
             IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
-
+            
+            // 获取前后按钮区域
             ImmutableRect2i nextButtonArea = contents.getNextPageButtonArea();
             ImmutableRect2i backButtonArea = contents.getBackButtonArea();
-
-            // 反射拿到 PageNavigation 的 area，作为真正的导航栏区域
-            try {
-                Field navigationField = IngredientGridWithNavigation.class.getDeclaredField("navigation");
-                navigationField.setAccessible(true);
-                Object navigation = navigationField.get(contents);
-
-                Field navAreaField = navigation.getClass().getDeclaredField("area");
-                navAreaField.setAccessible(true);
-                ImmutableRect2i navArea = (ImmutableRect2i) navAreaField.get(navigation);
-
-                if (!navArea.isEmpty()) {
-                    boolean inNavArea = mouseX >= navArea.getX() && mouseX < navArea.getX() + navArea.getWidth() &&
-                            mouseY >= navArea.getY() && mouseY < navArea.getY() + navArea.getHeight();
-                    if (!inNavArea) {
-                        return false;
-                    }
-
-                    // 避免抢占左右翻页按钮点击
-                    boolean inBack = !backButtonArea.isEmpty() && mouseX >= backButtonArea.getX() && mouseX < backButtonArea.getX() + backButtonArea.getWidth() &&
-                            mouseY >= backButtonArea.getY() && mouseY < backButtonArea.getY() + backButtonArea.getHeight();
-                    if (inBack) {
-                        return false;
-                    }
-                    boolean inNext = !nextButtonArea.isEmpty() && mouseX >= nextButtonArea.getX() && mouseX < nextButtonArea.getX() + nextButtonArea.getWidth() &&
-                            mouseY >= nextButtonArea.getY() && mouseY < nextButtonArea.getY() + nextButtonArea.getHeight();
-                    return !inNext;
-                }
-            } catch (Exception ignored) {
-            }
-
-            // 回退方案：两个按钮之间的区域
+            
             if (nextButtonArea.isEmpty() || backButtonArea.isEmpty()) {
                 return false;
             }
-
+            
+            // 计算页码文字区域（两个按钮之间）
             int pageAreaX = backButtonArea.getX() + backButtonArea.getWidth();
             int pageAreaY = backButtonArea.getY();
             int pageAreaWidth = nextButtonArea.getX() - pageAreaX;
             int pageAreaHeight = backButtonArea.getHeight();
-
+            
+            // 检查点击是否在页码区域内
             return mouseX >= pageAreaX && mouseX < pageAreaX + pageAreaWidth &&
-                    mouseY >= pageAreaY && mouseY < pageAreaY + pageAreaHeight;
+                   mouseY >= pageAreaY && mouseY < pageAreaY + pageAreaHeight;
             
         } catch (Exception e) {
             return false;
@@ -292,9 +264,34 @@ public class BookmarkLayoutClickHandler {
      */
     private void forceRefreshBookmarks(BookmarkOverlay overlay) {
         try {
-            overlay.getScreenPropertiesUpdater()
-                    .updateScreen(Minecraft.getInstance().screen)
-                    .update();
+            // 通过反射获取contents
+            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
+            contentsField.setAccessible(true);
+            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
+            
+            // 获取ingredientGrid
+            Field ingredientGridField = IngredientGridWithNavigation.class.getDeclaredField("ingredientGrid");
+            ingredientGridField.setAccessible(true);
+            IngredientGrid ingredientGrid = (IngredientGrid) ingredientGridField.get(contents);
+            
+            // 获取ingredientListRenderer
+            Field rendererField = IngredientGrid.class.getDeclaredField("ingredientListRenderer");
+            rendererField.setAccessible(true);
+            IngredientListRenderer renderer = (IngredientListRenderer) rendererField.get(ingredientGrid);
+            
+            // 清除渲染缓存
+            Field renderElementsField = IngredientListRenderer.class.getDeclaredField("renderElementsByType");
+            renderElementsField.setAccessible(true);
+            ListMultiMap<?, ?> renderElements = (ListMultiMap<?, ?>) renderElementsField.get(renderer);
+            renderElements.clear();
+            
+            Field renderOverlaysField = IngredientListRenderer.class.getDeclaredField("renderOverlays");
+            renderOverlaysField.setAccessible(true);
+            List<?> renderOverlays = (List<?>) renderOverlaysField.get(renderer);
+            renderOverlays.clear();
+            
+            // 调用updateLayout来刷新
+            contents.updateLayout(false);
             
         } catch (Exception e) {
             // 忽略错误
