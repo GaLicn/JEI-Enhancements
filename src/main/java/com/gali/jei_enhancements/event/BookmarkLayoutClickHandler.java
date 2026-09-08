@@ -10,15 +10,11 @@ import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListRenderer;
 import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import mezz.jei.gui.overlay.elements.IElement;
 import com.gali.jei_enhancements.mixin.accessor.BookmarkOverlayAccessor;
-import com.gali.jei_enhancements.mixin.accessor.IngredientGridAccessor;
-import com.gali.jei_enhancements.mixin.accessor.IngredientGridWithNavigationAccessor;
 import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -255,10 +251,8 @@ public class BookmarkLayoutClickHandler {
     private void forceRefreshBookmarks(BookmarkOverlay overlay) {
         try {
             IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
-            IngredientGrid ingredientGrid = ((IngredientGridWithNavigationAccessor) contents).jeiEnhancements$getIngredientGrid();
-            IngredientListRenderer renderer = ((IngredientGridAccessor) ingredientGrid).jeiEnhancements$getIngredientListRenderer();
-            renderer.clear();
-            contents.updateLayout(false);
+            // 保留已有槽位，仅重置分页并重新填充元素；clear 会删除槽位导致界面空白。
+            contents.updateLayout(true);
 
         } catch (Exception e) {
             JEIEnhancements.LOGGER.error("Error refreshing bookmark layout", e);
