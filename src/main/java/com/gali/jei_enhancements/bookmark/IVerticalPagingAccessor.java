@@ -6,6 +6,8 @@ import java.util.List;
  * 用于访问IngredientGridWithNavigationMixin添加的方法
  */
 public interface IVerticalPagingAccessor {
+    boolean jei_enhancements$isManagedBookmarkList();
+
     
     List<int[]> jei_enhancements$getGroupRanges();
     

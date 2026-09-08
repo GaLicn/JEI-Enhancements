@@ -6,6 +6,7 @@ import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
 import mezz.jei.gui.PageNavigation;
 import mezz.jei.gui.bookmarks.IBookmark;
+import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.overlay.IIngredientGridSource;
 import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
@@ -55,11 +56,16 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
     @Unique
     private int jei_enhancements$rowsPerPage = 1;
 
+    @Unique
+    private boolean jei_enhancements$managedBookmarkList = false;
+
     /**
      * 拦截updateLayout方法，在垂直布局模式下修正firstItemIndex和分页
      */
     @Inject(method = "updateLayout", at = @At("HEAD"))
     private void onUpdateLayoutHead(boolean resetToFirstPage, CallbackInfo ci) {
+        // 逻辑页允许为空，必须依据数据源类型识别书签列表，不能依赖当前元素数量。
+        jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             jei_enhancements$groupRanges = null;
             return;
@@ -76,6 +82,8 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
             jei_enhancements$groupRanges = null;
             return;
         }
+
+        jei_enhancements$managedBookmarkList = true;
 
         // 计算每页行数
         jei_enhancements$rowsPerPage = jei_enhancements$calculateRowsPerPage();
@@ -241,6 +249,12 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
     /**
      * 获取垂直模式下的总页数
      */
+    @Override
+    @Unique
+    public boolean jei_enhancements$isManagedBookmarkList() {
+        return jei_enhancements$managedBookmarkList;
+    }
+
     @Override
     @Unique
     public int jei_enhancements$getPageCount() {

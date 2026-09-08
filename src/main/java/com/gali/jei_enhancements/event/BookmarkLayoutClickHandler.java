@@ -6,6 +6,8 @@ import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.GroupingDragHandler;
+import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
+import com.gali.jei_enhancements.bookmark.IPageManagementAccessor;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
@@ -54,6 +56,30 @@ public class BookmarkLayoutClickHandler {
         
         if (!(bookmarkOverlay instanceof BookmarkOverlay overlay)) {
             return;
+        }
+
+        if (button == 0) {
+            IPageManagementAccessor pageButtons = (IPageManagementAccessor) overlay;
+            if (pageButtons.jeiEnhancements$getAddPageArea().contains(mouseX, mouseY)) {
+                BookmarkManager manager = BookmarkManager.getInstance();
+                manager.addPageAfterCurrent();
+                manager.save();
+                forceRefreshBookmarks(overlay);
+                event.setCanceled(true);
+                return;
+            }
+            if (pageButtons.jeiEnhancements$getRemovePageArea().contains(mouseX, mouseY)) {
+                BookmarkManager manager = BookmarkManager.getInstance();
+                int removedPage = manager.removeCurrentPage();
+                if (removedPage >= 0) {
+                    ((IBookmarkPageAccessor) ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getBookmarkList())
+                            .jeiEnhancements$clearPage(removedPage);
+                    manager.save();
+                    forceRefreshBookmarks(overlay);
+                }
+                event.setCanceled(true);
+                return;
+            }
         }
         
         // 检查是否在组面板区域

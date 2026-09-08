@@ -3,6 +3,8 @@ package com.gali.jei_enhancements.mixin;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
 import com.gali.jei_enhancements.bookmark.BookmarkQuantityRenderer;
 import com.gali.jei_enhancements.bookmark.GroupingDragHandler;
+import com.gali.jei_enhancements.bookmark.IPageManagementAccessor;
+import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
@@ -22,10 +24,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Mixin(value = BookmarkOverlay.class, remap = false)
-public abstract class BookmarkOverlayMixin {
+public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
 
     @Shadow @Final private IngredientGridWithNavigation contents;
     @Shadow @Final private BookmarkList bookmarkList;
+
+    @Unique private ImmutableRect2i jei_enhancements$addPageArea = ImmutableRect2i.EMPTY;
+    @Unique private ImmutableRect2i jei_enhancements$removePageArea = ImmutableRect2i.EMPTY;
     
     @Shadow public abstract boolean isListDisplayed();
 
@@ -34,6 +39,8 @@ public abstract class BookmarkOverlayMixin {
      */
     @Inject(method = "drawScreen", at = @At("TAIL"))
     private void onDrawScreenTail(Minecraft minecraft, GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
+        jei_enhancements$updatePageButtonAreas();
+        jei_enhancements$drawPageButtons(guiGraphics, mouseX, mouseY);
         if (isListDisplayed()) {
             // 更新网格信息
             jei_enhancements$updateGridInfo();
@@ -45,6 +52,44 @@ public abstract class BookmarkOverlayMixin {
             // 渲染自定义数量
             BookmarkQuantityRenderer.renderQuantities(guiGraphics, contents, bookmarkList);
         }
+    }
+
+    @Unique
+    private void jei_enhancements$updatePageButtonAreas() {
+        ImmutableRect2i back = contents.getBackButtonArea();
+        ImmutableRect2i next = contents.getNextPageButtonArea();
+        int size = Math.min(12, Math.max(1, back.getHeight() - 4));
+        jei_enhancements$removePageArea = back.isEmpty() ? ImmutableRect2i.EMPTY
+                : new ImmutableRect2i(back.getX() - size - 2, back.getY() + 4, size, size);
+        jei_enhancements$addPageArea = next.isEmpty() ? ImmutableRect2i.EMPTY
+                : new ImmutableRect2i(next.getX() + next.getWidth() + 2, next.getY() + 4, size, size);
+    }
+
+    @Unique
+    private void jei_enhancements$drawPageButtons(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (jei_enhancements$addPageArea.isEmpty()) return;
+        int addColor = jei_enhancements$addPageArea.contains(mouseX, mouseY) ? 0xFF88CC88 : 0xFF557755;
+        int removeColor = jei_enhancements$removePageArea.contains(mouseX, mouseY) ? 0xFFFF8888 : 0xFF995555;
+        graphics.fill(jei_enhancements$addPageArea.getX(), jei_enhancements$addPageArea.getY(),
+                jei_enhancements$addPageArea.getX() + jei_enhancements$addPageArea.getWidth(),
+                jei_enhancements$addPageArea.getY() + jei_enhancements$addPageArea.getHeight(), addColor);
+        graphics.fill(jei_enhancements$removePageArea.getX(), jei_enhancements$removePageArea.getY(),
+                jei_enhancements$removePageArea.getX() + jei_enhancements$removePageArea.getWidth(),
+                jei_enhancements$removePageArea.getY() + jei_enhancements$removePageArea.getHeight(), removeColor);
+        graphics.drawString(Minecraft.getInstance().font, "+", jei_enhancements$addPageArea.getX() + 3,
+                jei_enhancements$addPageArea.getY() + 1, 0xFFFFFFFF, false);
+        graphics.drawString(Minecraft.getInstance().font, "-", jei_enhancements$removePageArea.getX() + 4,
+                jei_enhancements$removePageArea.getY() + 1, 0xFFFFFFFF, false);
+    }
+
+    @Override
+    public ImmutableRect2i jeiEnhancements$getAddPageArea() {
+        return jei_enhancements$addPageArea;
+    }
+
+    @Override
+    public ImmutableRect2i jeiEnhancements$getRemovePageArea() {
+        return jei_enhancements$removePageArea;
     }
     
     /**

@@ -41,6 +41,11 @@ public class BookmarkManager {
     
     // 下一个组ID
     private int nextGroupId = 1;
+
+    // 逻辑书签页。页可为空，因此不能仅由书签数量推导。
+    private final List<Integer> pageIds = new ArrayList<>(List.of(0));
+    private int nextPageId = 1;
+    private int currentPageIndex = 0;
     
     // 是否允许重复添加（用于Mixin）
     private boolean allowDuplicates = false;
@@ -75,6 +80,74 @@ public class BookmarkManager {
     
     public void setCurrentAddingGroupId(int groupId) {
         this.currentAddingGroupId = groupId;
+    }
+
+    public int getCurrentPageId() {
+        return pageIds.get(currentPageIndex);
+    }
+
+    public int getPageCount() {
+        return pageIds.size();
+    }
+
+    public int getCurrentPageIndex() {
+        return currentPageIndex;
+    }
+
+    public boolean nextPage() {
+        if (pageIds.size() <= 1) {
+            return false;
+        }
+        currentPageIndex = (currentPageIndex + 1) % pageIds.size();
+        return true;
+    }
+
+    public boolean previousPage() {
+        if (pageIds.size() <= 1) {
+            return false;
+        }
+        currentPageIndex = (currentPageIndex - 1 + pageIds.size()) % pageIds.size();
+        return true;
+    }
+
+    /** 新页插入到当前页之后，并立即切换到该空白页。 */
+    public void addPageAfterCurrent() {
+        int pageId = nextPageId++;
+        pageIds.add(currentPageIndex + 1, pageId);
+        currentPageIndex++;
+        markDirty();
+    }
+
+    /**
+     * 删除当前页并切换到相邻页。
+     *
+     * @return 被删除的页 ID；仅剩一页时返回 {@code -1}。
+     */
+    public int removeCurrentPage() {
+        if (pageIds.size() <= 1) {
+            return -1;
+        }
+        int removedPageId = pageIds.remove(currentPageIndex);
+        if (currentPageIndex >= pageIds.size()) {
+            currentPageIndex = pageIds.size() - 1;
+        }
+        markDirty();
+        return removedPageId;
+    }
+
+    public List<IBookmark> getBookmarksOnPage(int pageId) {
+        List<IBookmark> bookmarks = new ArrayList<>();
+        for (BookmarkItem item : bookmarkItems) {
+            if (item.getPageId() == pageId && item.getLinkedBookmark() != null) {
+                bookmarks.add(item.getLinkedBookmark());
+            }
+        }
+        return bookmarks;
+    }
+
+    public boolean isBookmarkOnCurrentPage(IBookmark bookmark) {
+        BookmarkItem item = findBookmarkItem(bookmark);
+        return item == null || item.getPageId() == getCurrentPageId();
     }
     
 
@@ -141,6 +214,7 @@ public class BookmarkManager {
         }
         
         BookmarkItem item = new BookmarkItem(groupId, itemKey, baseQuantity, type);
+        item.setPageId(getCurrentPageId());
         item.setLinkedBookmark(jeiBookmark);
         bookmarkItems.add(item);
         
@@ -151,6 +225,21 @@ public class BookmarkManager {
         
         markDirty();
         return item;
+    }
+
+    /** 注册普通 JEI 书签，使其跟随当前逻辑页并参与持久化。 */
+    public void registerPlainBookmark(IBookmark bookmark) {
+        if (findBookmarkItem(bookmark) != null) {
+            return;
+        }
+        addBookmarkItem(DEFAULT_GROUP_ID, getItemKey(bookmark), 1,
+                BookmarkItem.BookmarkItemType.ITEM, bookmark);
+    }
+
+    public void removeBookmarksFromPage(int pageId) {
+        bookmarkItems.removeIf(item -> item.getPageId() == pageId);
+        jeiBookmarkMap.entrySet().removeIf(entry -> entry.getValue().getPageId() == pageId);
+        markDirty();
     }
     
     /**
@@ -734,6 +823,8 @@ public class BookmarkManager {
             
             JsonObject root = new JsonObject();
             root.addProperty("nextGroupId", nextGroupId);
+            root.addProperty("nextPageId", nextPageId);
+            root.add("pageIds", new Gson().toJsonTree(pageIds));
             
             // 保存组信息
             JsonObject groupsObj = new JsonObject();
@@ -751,6 +842,7 @@ public class BookmarkManager {
             for (BookmarkItem item : bookmarkItems) {
                 JsonObject itemObj = new JsonObject();
                 itemObj.addProperty("groupId", item.getGroupId());
+                itemObj.addProperty("pageId", item.getPageId());
                 itemObj.addProperty("itemKey", item.getItemKey());
                 itemObj.addProperty("factor", item.getFactor());
                 itemObj.addProperty("amount", item.getAmount());
@@ -784,10 +876,25 @@ public class BookmarkManager {
             bookmarkItems.clear();
             groups.clear();
             jeiBookmarkMap.clear();
+            pageIds.clear();
+            pageIds.add(DEFAULT_GROUP_ID);
+            currentPageIndex = 0;
             groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
             
             if (root.has("nextGroupId")) {
                 nextGroupId = root.get("nextGroupId").getAsInt();
+            }
+            if (root.has("nextPageId")) {
+                nextPageId = root.get("nextPageId").getAsInt();
+            }
+            if (root.has("pageIds")) {
+                pageIds.clear();
+                for (JsonElement pageId : root.getAsJsonArray("pageIds")) {
+                    pageIds.add(pageId.getAsInt());
+                }
+                if (pageIds.isEmpty()) {
+                    pageIds.add(DEFAULT_GROUP_ID);
+                }
             }
             
             // 加载组信息
@@ -834,6 +941,9 @@ public class BookmarkManager {
                             itemObj.get("type").getAsInt()];
                     
                     BookmarkItem item = new BookmarkItem(groupId, itemKey, factor, type);
+                    if (itemObj.has("pageId")) {
+                        item.setPageId(itemObj.get("pageId").getAsInt());
+                    }
                     
                     // 加载amount
                     if (itemObj.has("amount")) {
@@ -867,6 +977,10 @@ public class BookmarkManager {
         jeiBookmarkMap.clear();
         groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
         nextGroupId = 1;
+        pageIds.clear();
+        pageIds.add(DEFAULT_GROUP_ID);
+        nextPageId = 1;
+        currentPageIndex = 0;
         loaded = false;
         markDirty();
     }

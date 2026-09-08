@@ -4,12 +4,14 @@ import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IdentityDistinctBookmark;
+import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
 import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.bookmarks.BookmarkFactory;
 import mezz.jei.gui.overlay.IIngredientGridSource.SourceListChangedListener;
+import mezz.jei.gui.overlay.elements.IElement;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -30,7 +32,7 @@ import java.util.Set;
  * 修改JEI的BookmarkList，允许同一物品多次添加到书签
  */
 @Mixin(value = BookmarkList.class, remap = false)
-public class BookmarkListMixin {
+public class BookmarkListMixin implements IBookmarkPageAccessor {
     
     @Shadow @Final
     private Set<IBookmark> bookmarksSet;
@@ -65,6 +67,42 @@ public class BookmarkListMixin {
         BookmarkManager manager = BookmarkManager.getInstance();
         // 尝试将新添加的JEI书签与已保存的BookmarkItem关联
         manager.tryLinkBookmark(bookmark);
+    }
+
+    @Inject(method = "getElements", at = @At("HEAD"), cancellable = true)
+    private void onGetElements(CallbackInfoReturnable<List<IElement<?>>> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        cir.setReturnValue(bookmarksList.stream()
+                .filter(manager::isBookmarkOnCurrentPage)
+                .<IElement<?>>map(IBookmark::getElement)
+                .toList());
+    }
+
+    @Inject(method = "add", at = @At("RETURN"))
+    private void onAddReturn(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValueZ() && BookmarkManager.getInstance().findBookmarkItem(bookmark) == null) {
+            BookmarkManager manager = BookmarkManager.getInstance();
+            manager.registerPlainBookmark(bookmark);
+            manager.save();
+            // 注册页归属发生在 JEI 通知之后，补发一次列表变更事件。
+            jei_enhancements$notifyListeners();
+        }
+    }
+
+    @Override
+    @Unique
+    public void jeiEnhancements$clearPage(int pageId) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        List<IBookmark> pageBookmarks = bookmarksList.stream().filter(bookmark -> {
+            BookmarkItem item = manager.findBookmarkItem(bookmark);
+            return item != null && item.getPageId() == pageId;
+        }).toList();
+        for (IBookmark bookmark : pageBookmarks) {
+            // 走 JEI 原生删除入口，确保其书签配置文件也同步更新。
+            ((BookmarkList) (Object) this).remove(bookmark);
+        }
+        manager.removeBookmarksFromPage(pageId);
+        jei_enhancements$notifyListeners();
     }
     
     /**
@@ -207,6 +245,14 @@ public class BookmarkListMixin {
                 JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
             }
         }
+
+        // 兼容旧存档：此前未由本模组管理的 JEI 书签统一迁移到第一页。
+        for (IBookmark bookmark : bookmarksList) {
+            if (manager.findBookmarkItem(bookmark) == null) {
+                manager.registerPlainBookmark(bookmark);
+            }
+        }
+        manager.save();
     }
     
     /**

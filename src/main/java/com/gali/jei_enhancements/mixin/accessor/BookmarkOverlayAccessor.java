@@ -9,4 +9,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface BookmarkOverlayAccessor {
     @Accessor("contents")
     IngredientGridWithNavigation jeiEnhancements$getContents();
+
+    @Accessor("bookmarkList")
+    mezz.jei.gui.bookmarks.BookmarkList jeiEnhancements$getBookmarkList();
 }

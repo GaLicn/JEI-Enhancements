@@ -17,6 +17,7 @@ public class BookmarkItem {
     }
     
     private int groupId;
+    private int pageId;
     private final String itemKey;
 
     private long amount;      // 当前总数量
@@ -34,6 +35,14 @@ public class BookmarkItem {
         this.factor = Math.max(1, factor);
         this.amount = this.factor; // 初始数量等于factor（即multiplier=1）
         this.type = type;
+    }
+
+    public int getPageId() {
+        return pageId;
+    }
+
+    public void setPageId(int pageId) {
+        this.pageId = pageId;
     }
     
     public int getGroupId() {

@@ -1,6 +1,7 @@
 package com.gali.jei_enhancements.mixin;
 
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
+import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
 import mezz.jei.gui.input.IPaged;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
@@ -27,12 +28,17 @@ public abstract class IngredientGridPagedMixin implements IPaged {
      */
     @Inject(method = "getPageCount", at = @At("HEAD"), cancellable = true)
     private void onGetPageCount(CallbackInfoReturnable<Integer> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
+        if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
+                && accessor.jei_enhancements$isManagedBookmarkList()) {
+            cir.setReturnValue(manager.getPageCount());
+            return;
+        }
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             return;
         }
         
-        // 获取外部类实例
-        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
         if (outer == null) {
             return;
         }
@@ -54,11 +60,17 @@ public abstract class IngredientGridPagedMixin implements IPaged {
      */
     @Inject(method = "getPageNumber", at = @At("HEAD"), cancellable = true)
     private void onGetPageNumber(CallbackInfoReturnable<Integer> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
+        if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
+                && accessor.jei_enhancements$isManagedBookmarkList()) {
+            cir.setReturnValue(manager.getCurrentPageIndex());
+            return;
+        }
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             return;
         }
         
-        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
         if (outer == null) {
             return;
         }
@@ -76,11 +88,19 @@ public abstract class IngredientGridPagedMixin implements IPaged {
      */
     @Inject(method = "nextPage", at = @At("HEAD"), cancellable = true)
     private void onNextPage(CallbackInfoReturnable<Boolean> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
+        if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
+                && accessor.jei_enhancements$isManagedBookmarkList()) {
+            manager.nextPage();
+            this$0.updateLayout(true);
+            cir.setReturnValue(true);
+            return;
+        }
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             return;
         }
         
-        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
         if (outer == null) {
             return;
         }
@@ -100,11 +120,19 @@ public abstract class IngredientGridPagedMixin implements IPaged {
      */
     @Inject(method = "previousPage", at = @At("HEAD"), cancellable = true)
     private void onPreviousPage(CallbackInfoReturnable<Boolean> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
+        if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
+                && accessor.jei_enhancements$isManagedBookmarkList()) {
+            manager.previousPage();
+            this$0.updateLayout(true);
+            cir.setReturnValue(true);
+            return;
+        }
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             return;
         }
         
-        IngredientGridWithNavigation outer = jei_enhancements$getOuter();
         if (outer == null) {
             return;
         }

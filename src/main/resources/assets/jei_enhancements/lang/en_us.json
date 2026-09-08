@@ -14,5 +14,7 @@
   "jei_enhancements.tooltip.left_drag_up": "Left-drag up: Split group",
   "jei_enhancements.tooltip.right_drag": "Right-drag: Delete group",
   "jei_enhancements.tooltip.right_click_bracket": "Right-click [: Enable chain mode, quantities scale by recipe ratio",
-  "jei_enhancements.tooltip.click_page": "Click page number: Toggle vertical/horizontal layout"
+  "jei_enhancements.tooltip.click_page": "Click page number: Toggle vertical/horizontal layout",
+  "jei_enhancements.tooltip.add_bookmark_page": "+: Add an empty bookmark page after the current page",
+  "jei_enhancements.tooltip.remove_bookmark_page": "-: Delete the current bookmark page and its bookmarks"
 }

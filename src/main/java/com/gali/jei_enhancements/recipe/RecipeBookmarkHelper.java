@@ -175,11 +175,10 @@ public class RecipeBookmarkHelper {
         // 获取itemKey
         String itemKey = getItemKey(member.ingredient);
         
+        // 先建立管理映射，避免 BookmarkList Mixin 将配方成员误记为普通书签。
+        manager.addBookmarkItem(groupId, itemKey, member.quantity, type, bookmark);
         // 添加到JEI书签列表（Mixin会绕过重复检测）
         bookmarkList.add(bookmark);
-        
-        // 添加到BookmarkManager
-        manager.addBookmarkItem(groupId, itemKey, member.quantity, type, bookmark);
 
         
         return true;
