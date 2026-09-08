@@ -2,6 +2,7 @@ package com.gali.jei_enhancements.mixin;
 
 import com.gali.jei_enhancements.jei.JEIEnhancementsPlugin;
 import com.gali.jei_enhancements.recipe.RecipeBookmarkHelper;
+import com.gali.jei_enhancements.mixin.accessor.RecipeGuiLayoutsAccessor;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.helpers.ICodecHelper;
 import mezz.jei.api.runtime.IIngredientManager;
@@ -18,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
 
@@ -93,32 +93,23 @@ public abstract class RecipesGuiMixin {
     /**
      * 获取当前鼠标悬停的配方布局
      */
-    @SuppressWarnings("unchecked")
     private Optional<IRecipeLayoutDrawable<?>> getHoveredRecipeLayout() {
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         double mouseX = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
         double mouseY = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
         
-        try {
-            // 通过反射获取recipeLayoutsWithButtons列表
-            Field field = RecipeGuiLayouts.class.getDeclaredField("recipeLayoutsWithButtons");
-            field.setAccessible(true);
-            List<IRecipeLayoutWithButtons<?>> layoutsList = (List<IRecipeLayoutWithButtons<?>>) field.get(layouts);
-            
-            // 遍历所有配方布局，找到鼠标悬停的那个
-            for (IRecipeLayoutWithButtons<?> layout : layoutsList) {
-                IRecipeLayoutDrawable<?> recipeLayout = layout.getRecipeLayout();
-                if (recipeLayout.isMouseOver(mouseX, mouseY)) {
-                    return Optional.of(recipeLayout);
-                }
+        List<IRecipeLayoutWithButtons<?>> layoutsList =
+                ((RecipeGuiLayoutsAccessor) layouts).jeiEnhancements$getRecipeLayoutsWithButtons();
+
+        for (IRecipeLayoutWithButtons<?> layout : layoutsList) {
+            IRecipeLayoutDrawable<?> recipeLayout = layout.getRecipeLayout();
+            if (recipeLayout.isMouseOver(mouseX, mouseY)) {
+                return Optional.of(recipeLayout);
             }
-            
-            // 如果没有悬停的，返回第一个可见的配方
-            if (!layoutsList.isEmpty()) {
-                return Optional.of(layoutsList.getFirst().getRecipeLayout());
-            }
-        } catch (Exception e) {
-            // 忽略反射错误
+        }
+
+        if (!layoutsList.isEmpty()) {
+            return Optional.of(layoutsList.getFirst().getRecipeLayout());
         }
         
         return Optional.empty();

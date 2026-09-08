@@ -113,6 +113,7 @@ public class GroupingDragHandler {
                         manager.recalculateCraftingChainInGroup(item.getGroupId());
                     }
                     
+                    manager.markDirty();
                     manager.save();
                     return true;
                 }
@@ -325,6 +326,7 @@ public class GroupingDragHandler {
             }
         }
         
+        manager.markDirty();
         manager.save();
     }
     
@@ -381,6 +383,7 @@ public class GroupingDragHandler {
             }
         }
         
+        manager.markDirty();
         manager.save();
     }
     
@@ -436,6 +439,7 @@ public class GroupingDragHandler {
             }
         }
         
+        manager.markDirty();
         manager.save();
     }
     

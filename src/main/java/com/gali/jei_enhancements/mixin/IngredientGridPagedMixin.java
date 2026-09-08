@@ -19,6 +19,9 @@ import java.util.List;
 @Mixin(targets = "mezz.jei.gui.overlay.IngredientGridWithNavigation$IngredientGridPaged", remap = false)
 public abstract class IngredientGridPagedMixin implements IPaged {
 
+    @org.spongepowered.asm.mixin.Shadow(aliases = "this$0")
+    private IngredientGridWithNavigation this$0;
+
     /**
      * 拦截getPageCount方法，在垂直模式下返回基于组数量的页数
      */
@@ -86,14 +89,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
             List<int[]> groupRanges = accessor.jei_enhancements$getGroupRanges();
             if (groupRanges != null && !groupRanges.isEmpty()) {
                 boolean result = accessor.jei_enhancements$nextPage();
-                // 触发布局更新
-                try {
-                    java.lang.reflect.Method updateLayout = IngredientGridWithNavigation.class.getDeclaredMethod("updateLayout", boolean.class);
-                    updateLayout.setAccessible(true);
-                    updateLayout.invoke(outer, false);
-                } catch (Exception e) {
-                    // ignore
-                }
+                outer.updateLayout(false);
                 cir.setReturnValue(result);
             }
         }
@@ -117,14 +113,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
             List<int[]> groupRanges = accessor.jei_enhancements$getGroupRanges();
             if (groupRanges != null && !groupRanges.isEmpty()) {
                 boolean result = accessor.jei_enhancements$previousPage();
-                // 触发布局更新
-                try {
-                    java.lang.reflect.Method updateLayout = IngredientGridWithNavigation.class.getDeclaredMethod("updateLayout", boolean.class);
-                    updateLayout.setAccessible(true);
-                    updateLayout.invoke(outer, false);
-                } catch (Exception e) {
-                    // ignore
-                }
+                outer.updateLayout(false);
                 cir.setReturnValue(result);
             }
         }
@@ -135,13 +124,6 @@ public abstract class IngredientGridPagedMixin implements IPaged {
      */
     @Unique
     private IngredientGridWithNavigation jei_enhancements$getOuter() {
-        try {
-            // 内部类有一个隐式的this$0字段指向外部类
-            java.lang.reflect.Field outerField = this.getClass().getDeclaredField("this$0");
-            outerField.setAccessible(true);
-            return (IngredientGridWithNavigation) outerField.get(this);
-        } catch (Exception e) {
-            return null;
-        }
+        return this$0;
     }
 }

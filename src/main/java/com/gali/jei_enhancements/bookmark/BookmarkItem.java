@@ -80,7 +80,11 @@ public class BookmarkItem {
      * 设置合成次数，自动计算amount
      */
     public void setMultiplier(long multiplier) {
-        this.amount = factor * Math.max(1, multiplier);
+        long normalizedMultiplier = Math.max(1, multiplier);
+        // 饱和计算，避免大批量配方将数量翻转为负数。
+        this.amount = normalizedMultiplier > Long.MAX_VALUE / factor
+                ? Long.MAX_VALUE
+                : factor * normalizedMultiplier;
     }
     
     /**
@@ -90,13 +94,15 @@ public class BookmarkItem {
      */
     public long shiftMultiplier(long shift) {
         long currentMultiplier = getMultiplier();
-        long newMultiplier = Math.max(1, currentMultiplier + shift);
+        long newMultiplier = shift > 0 && currentMultiplier > Long.MAX_VALUE - shift
+                ? Long.MAX_VALUE
+                : Math.max(1, currentMultiplier + shift);
         setMultiplier(newMultiplier);
         return newMultiplier;
     }
 
-    public int getBaseQuantity() {
-        return (int) factor;
+    public long getBaseQuantity() {
+        return factor;
     }
     
     public BookmarkItemType getType() {

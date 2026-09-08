@@ -10,7 +10,12 @@
     "BookmarkListMixin",
     "IngredientGridWithNavigationMixin",
     "IngredientGridPagedMixin",
-    "IngredientGridMixin"
+    "IngredientGridMixin",
+    "accessor.BookmarkOverlayAccessor",
+    "accessor.IngredientGridAccessor",
+    "accessor.IngredientGridWithNavigationAccessor",
+    "accessor.RecipeGuiLayoutsAccessor",
+    "IngredientBookmarkIdentityMixin"
   ],
   "injectors": {
     "defaultRequire": 1

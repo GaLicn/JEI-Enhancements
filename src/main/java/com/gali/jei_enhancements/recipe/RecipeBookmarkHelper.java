@@ -2,11 +2,13 @@ package com.gali.jei_enhancements.recipe;
 
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import com.gali.jei_enhancements.bookmark.IdentityDistinctBookmark;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
 import mezz.jei.api.helpers.ICodecHelper;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.gui.bookmarks.BookmarkList;
@@ -167,6 +169,8 @@ public class RecipeBookmarkHelper {
         @SuppressWarnings("unchecked")
         ITypedIngredient<T> ingredient = (ITypedIngredient<T>) member.ingredient;
         IngredientBookmark<T> bookmark = bookmarkFactory.create(ingredient);
+        // 让相同原料的配方成员能作为独立书签共存。
+        ((IdentityDistinctBookmark) bookmark).jeiEnhancements$setIdentityDistinct(true);
         
         // 获取itemKey
         String itemKey = getItemKey(member.ingredient);
@@ -189,37 +193,23 @@ public class RecipeBookmarkHelper {
         return BookmarkManager.getInstance().getItemKeyFromIngredient(ingredient);
     }
     
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private static int getIngredientQuantity(ITypedIngredient<?> ingredient) {
         Object obj = ingredient.getIngredient();
         if (obj instanceof ItemStack stack) {
             return stack.getCount();
         }
         
-        // 尝试获取流体/化学品的数量
-        try {
-            // 尝试获取getAmount方法（FluidStack, ChemicalStack等）
-            java.lang.reflect.Method getAmount = null;
-            try {
-                getAmount = obj.getClass().getMethod("getAmount");
-            } catch (NoSuchMethodException e) {
-                // 尝试其他可能的方法名
-                try {
-                    getAmount = obj.getClass().getMethod("amount");
-                } catch (NoSuchMethodException e2) {
-                    // ignore
-                }
-            }
-            
-            if (getAmount != null) {
-                Object result = getAmount.invoke(obj);
-                if (result instanceof Number num) {
-                    return num.intValue();
-                }
-            }
-        } catch (Exception e) {
-            // 反射失败，返回默认值
+        IIngredientHelper ingredientHelper = ingredientManagerForQuantity(ingredient);
+        if (ingredientHelper == null) {
+            return 1;
         }
-        
-        return 1;
+        long amount = ingredientHelper.getAmount(obj);
+        return amount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(1, amount);
+    }
+
+    private static IIngredientHelper ingredientManagerForQuantity(ITypedIngredient<?> ingredient) {
+        IIngredientManager manager = com.gali.jei_enhancements.jei.JEIEnhancementsPlugin.getIngredientManager();
+        return manager == null ? null : manager.getIngredientHelper(ingredient.getType());
     }
 }

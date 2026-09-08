@@ -3,8 +3,10 @@ package com.gali.jei_enhancements.bookmark;
 import com.gali.jei_enhancements.JEIEnhancements;
 import com.google.gson.*;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.ingredients.IIngredientHelper;
+import mezz.jei.api.ingredients.subtypes.UidContext;
+import com.gali.jei_enhancements.jei.JEIEnhancementsPlugin;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.bookmarks.IngredientBookmark;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -272,8 +274,8 @@ public class BookmarkManager {
      * 获取书签项的当前数量
      * 直接返回item的amount
      */
-    public int getQuantity(BookmarkItem item) {
-        return (int) item.getAmount();
+    public long getQuantity(BookmarkItem item) {
+        return item.getAmount();
     }
     
     /**
@@ -526,11 +528,11 @@ public class BookmarkManager {
             BookmarkItem prefResult = preferredItems.get(ingrItem);
             if (prefResult != null) {
                 // 计算这个INGREDIENT需要多少
-                long ingrNeeded = ingrItem.getFactor() * multiplier;
+                long ingrNeeded = saturatingMultiply(ingrItem.getFactor(), multiplier);
                 
                 // 累加到提供这个物品的RESULT的需求量上
                 long prevRequired = requiredAmount.getOrDefault(prefResult, 0L);
-                long newRequired = prevRequired + ingrNeeded;
+                long newRequired = saturatingAdd(prevRequired, ingrNeeded);
                 requiredAmount.put(prefResult, newRequired);
                 
                 // 计算需要增加多少合成次数（NEI的shift计算）
@@ -540,7 +542,7 @@ public class BookmarkManager {
                 
                 if (shift > 0) {
                     // 增加这个配方的产出量
-                    long newAmount = prevAmount + shift * prefResult.getFactor();
+                    long newAmount = saturatingAdd(prevAmount, saturatingMultiply(shift, prefResult.getFactor()));
                     currentAmount.put(prefResult, newAmount);
                     
                     // 递归处理这个配方的INGREDIENT（只传入新增的shift）
@@ -639,7 +641,18 @@ public class BookmarkManager {
         }
         return Math.min(Integer.MAX_VALUE, Math.max(minMultiplier, currentMultiplier));
     }
-    
+
+    private long saturatingAdd(long left, long right) {
+        return right > 0 && left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+    }
+
+    private long saturatingMultiply(long left, long right) {
+        if (left == 0 || right == 0) {
+            return 0;
+        }
+        return left > Long.MAX_VALUE / right ? Long.MAX_VALUE : left * right;
+    }
+
     /**
      * 调整组的倍率
      */
@@ -662,9 +675,8 @@ public class BookmarkManager {
      * 从JEI书签获取物品key
      */
     public String getItemKey(IBookmark bookmark) {
-        if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
-            ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
-            return getItemKeyFromIngredient(ingredient);
+        if (bookmark.getElement() != null) {
+            return getItemKeyFromIngredient(bookmark.getElement().getTypedIngredient());
         }
         return String.valueOf(bookmark.hashCode());
     }
@@ -680,105 +692,18 @@ public class BookmarkManager {
             return getItemKeyFromStack(stack);
         }
         
-        // 对于流体和其他类型，尝试获取更稳定的标识符
-        String typeUid = ingredient.getType().getUid().toString();
-        
-        // 尝试使用反射获取流体/化学物质的注册名称
-        String stableKey = getStableKeyForObject(obj);
-        if (stableKey != null) {
-            return typeUid + ":" + stableKey;
-        }
-        
-        // 回退到使用toString()，通常比hashCode()更稳定
-        return typeUid + ":" + obj.toString();
+        return getIngredientUniqueId(ingredient);
     }
-    
-    /**
-     * 尝试获取对象的稳定key（用于流体、化学物质等）
-     */
-    private String getStableKeyForObject(Object obj) {
-        try {
-            // 尝试NeoForge FluidStack
-            if (obj.getClass().getName().contains("FluidStack")) {
-                // 尝试获取getFluid().builtInRegistryHolder().key().location()
-                java.lang.reflect.Method getFluid = obj.getClass().getMethod("getFluid");
-                Object fluid = getFluid.invoke(obj);
-                if (fluid != null) {
-                    // 尝试获取注册名称
-                    java.lang.reflect.Method builtInRegistryHolder = fluid.getClass().getMethod("builtInRegistryHolder");
-                    Object holder = builtInRegistryHolder.invoke(fluid);
-                    if (holder != null) {
-                        java.lang.reflect.Method key = holder.getClass().getMethod("key");
-                        Object resourceKey = key.invoke(holder);
-                        if (resourceKey != null) {
-                            java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
-                            Object loc = location.invoke(resourceKey);
-                            if (loc != null) {
-                                return loc.toString();
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 尝试Mekanism ChemicalStack
-            if (obj.getClass().getName().contains("ChemicalStack")) {
-                // 尝试获取getType().getRegistryName() 或 getChemical().getRegistryName()
-                java.lang.reflect.Method getChemical = null;
-                try {
-                    getChemical = obj.getClass().getMethod("getChemical");
-                } catch (NoSuchMethodException e) {
-                    try {
-                        getChemical = obj.getClass().getMethod("getType");
-                    } catch (NoSuchMethodException e2) {
-                        // ignore
-                    }
-                }
-                
-                if (getChemical != null) {
-                    Object chemical = getChemical.invoke(obj);
-                    if (chemical != null) {
-                        // 尝试获取注册名称
-                        java.lang.reflect.Method getRegistryName = null;
-                        try {
-                            getRegistryName = chemical.getClass().getMethod("getRegistryName");
-                        } catch (NoSuchMethodException e) {
-                            // 尝试其他方法
-                            try {
-                                // Mekanism 1.21+ 使用不同的API
-                                java.lang.reflect.Method builtInRegistryHolder = chemical.getClass().getMethod("builtInRegistryHolder");
-                                Object holder = builtInRegistryHolder.invoke(chemical);
-                                if (holder != null) {
-                                    java.lang.reflect.Method key = holder.getClass().getMethod("key");
-                                    Object resourceKey = key.invoke(holder);
-                                    if (resourceKey != null) {
-                                        java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
-                                        Object loc = location.invoke(resourceKey);
-                                        if (loc != null) {
-                                            return loc.toString();
-                                        }
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                // ignore
-                            }
-                        }
-                        
-                        if (getRegistryName != null) {
-                            Object regName = getRegistryName.invoke(chemical);
-                            if (regName != null) {
-                                return regName.toString();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // 反射失败，返回null使用回退方案
-            JEIEnhancements.LOGGER.debug("Failed to get stable key for object: " + obj.getClass().getName(), e);
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private String getIngredientUniqueId(ITypedIngredient<?> ingredient) {
+        var ingredientManager = JEIEnhancementsPlugin.getIngredientManager();
+        if (ingredientManager == null) {
+            return String.valueOf(ingredient.getIngredient());
         }
-        
-        return null;
+        IIngredientHelper ingredientHelper = ingredientManager.getIngredientHelper(ingredient.getType());
+        return ingredient.getType().getUid() + ":" + ingredientHelper.getUniqueId(
+                ingredient.getIngredient(), UidContext.Ingredient);
     }
     
     /**
@@ -795,7 +720,8 @@ public class BookmarkManager {
     }
     
 
-    private void markDirty() {
+    /** Marks a direct group or item mutation for persistence. */
+    public void markDirty() {
         dirty = true;
     }
     

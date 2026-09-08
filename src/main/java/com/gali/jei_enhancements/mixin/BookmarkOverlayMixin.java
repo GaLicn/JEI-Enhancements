@@ -76,8 +76,9 @@ public abstract class BookmarkOverlayMixin {
             slotHeight = area.getHeight();
         }
         
-        int columns = (maxX - minX) / slotWidth;
-        int rows = (maxY - minY) / slotHeight;
+        // 坐标表示最后一个槽位的右/下边界，因此需将首槽位计入。
+        int columns = (maxX - minX) / slotWidth + 1;
+        int rows = (maxY - minY) / slotHeight + 1;
         
         GroupingDragHandler.getInstance().updateGridInfo(minX, minY, slotHeight, columns, rows);
     }

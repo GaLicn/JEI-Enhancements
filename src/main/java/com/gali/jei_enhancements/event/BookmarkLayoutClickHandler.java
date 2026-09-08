@@ -9,7 +9,6 @@ import com.gali.jei_enhancements.bookmark.GroupingDragHandler;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.core.collect.ListMultiMap;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
@@ -17,13 +16,15 @@ import mezz.jei.gui.overlay.IngredientListRenderer;
 import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import mezz.jei.gui.overlay.elements.IElement;
+import com.gali.jei_enhancements.mixin.accessor.BookmarkOverlayAccessor;
+import com.gali.jei_enhancements.mixin.accessor.IngredientGridAccessor;
+import com.gali.jei_enhancements.mixin.accessor.IngredientGridWithNavigationAccessor;
 import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -156,14 +157,8 @@ public class BookmarkLayoutClickHandler {
      * 获取书签槽位列表
      */
     private List<IngredientListSlot> getSlots(BookmarkOverlay overlay) {
-        try {
-            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
-            contentsField.setAccessible(true);
-            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
-            return contents.getSlots().collect(Collectors.toList());
-        } catch (Exception e) {
-            return List.of();
-        }
+        IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
+        return contents.getSlots().collect(Collectors.toList());
     }
     
     /**
@@ -171,9 +166,7 @@ public class BookmarkLayoutClickHandler {
      */
     private boolean handleGroupToggle(BookmarkOverlay overlay, double mouseX, double mouseY) {
         try {
-            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
-            contentsField.setAccessible(true);
-            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
+            IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
             
             // 查找鼠标下的槽位
             Optional<IngredientListSlot> slotOpt = contents.getSlots()
@@ -209,6 +202,7 @@ public class BookmarkLayoutClickHandler {
                 if (group != null && groupSize > 1) {
                     // 切换展开/折叠状态
                     group.toggleExpanded();
+                    manager.markDirty();
                     manager.save();
                     
                     // 刷新显示
@@ -218,7 +212,7 @@ public class BookmarkLayoutClickHandler {
                 }
             }
             
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             JEIEnhancements.LOGGER.error("Error handling group toggle", e);
         }
         
@@ -230,11 +224,7 @@ public class BookmarkLayoutClickHandler {
      */
     private boolean isClickOnPageArea(BookmarkOverlay overlay, double mouseX, double mouseY) {
         try {
-            // 通过反射获取contents字段
-            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
-            contentsField.setAccessible(true);
-            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
-            
+            IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
             // 获取前后按钮区域
             ImmutableRect2i nextButtonArea = contents.getNextPageButtonArea();
             ImmutableRect2i backButtonArea = contents.getBackButtonArea();
@@ -253,7 +243,8 @@ public class BookmarkLayoutClickHandler {
             return mouseX >= pageAreaX && mouseX < pageAreaX + pageAreaWidth &&
                    mouseY >= pageAreaY && mouseY < pageAreaY + pageAreaHeight;
             
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            JEIEnhancements.LOGGER.error("Error checking bookmark page area", e);
             return false;
         }
     }
@@ -263,37 +254,14 @@ public class BookmarkLayoutClickHandler {
      */
     private void forceRefreshBookmarks(BookmarkOverlay overlay) {
         try {
-            // 通过反射获取contents
-            Field contentsField = BookmarkOverlay.class.getDeclaredField("contents");
-            contentsField.setAccessible(true);
-            IngredientGridWithNavigation contents = (IngredientGridWithNavigation) contentsField.get(overlay);
-            
-            // 获取ingredientGrid
-            Field ingredientGridField = IngredientGridWithNavigation.class.getDeclaredField("ingredientGrid");
-            ingredientGridField.setAccessible(true);
-            IngredientGrid ingredientGrid = (IngredientGrid) ingredientGridField.get(contents);
-            
-            // 获取ingredientListRenderer
-            Field rendererField = IngredientGrid.class.getDeclaredField("ingredientListRenderer");
-            rendererField.setAccessible(true);
-            IngredientListRenderer renderer = (IngredientListRenderer) rendererField.get(ingredientGrid);
-            
-            // 清除渲染缓存
-            Field renderElementsField = IngredientListRenderer.class.getDeclaredField("renderElementsByType");
-            renderElementsField.setAccessible(true);
-            ListMultiMap<?, ?> renderElements = (ListMultiMap<?, ?>) renderElementsField.get(renderer);
-            renderElements.clear();
-            
-            Field renderOverlaysField = IngredientListRenderer.class.getDeclaredField("renderOverlays");
-            renderOverlaysField.setAccessible(true);
-            List<?> renderOverlays = (List<?>) renderOverlaysField.get(renderer);
-            renderOverlays.clear();
-            
-            // 调用updateLayout来刷新
+            IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
+            IngredientGrid ingredientGrid = ((IngredientGridWithNavigationAccessor) contents).jeiEnhancements$getIngredientGrid();
+            IngredientListRenderer renderer = ((IngredientGridAccessor) ingredientGrid).jeiEnhancements$getIngredientListRenderer();
+            renderer.clear();
             contents.updateLayout(false);
-            
+
         } catch (Exception e) {
-            // 忽略错误
+            JEIEnhancements.LOGGER.error("Error refreshing bookmark layout", e);
         }
     }
 }

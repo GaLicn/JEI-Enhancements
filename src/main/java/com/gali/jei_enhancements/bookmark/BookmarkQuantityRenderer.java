@@ -3,7 +3,6 @@ package com.gali.jei_enhancements.bookmark;
 import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
 import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
@@ -192,7 +191,7 @@ public class BookmarkQuantityRenderer {
         }
         
         // 获取计算后的数量
-        int quantity = manager.getQuantity(item);
+        long quantity = manager.getQuantity(item);
         if (quantity <= 0) {
             return;
         }
@@ -241,8 +240,8 @@ public class BookmarkQuantityRenderer {
      * 检测书签是否是流体或化学品类型
      */
     private static boolean isFluidOrChemical(IBookmark bookmark) {
-        if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
-            ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
+        if (bookmark.getElement() != null) {
+            ITypedIngredient<?> ingredient = bookmark.getElement().getTypedIngredient();
             Object obj = ingredient.getIngredient();
             
             // 如果不是ItemStack，就是流体或化学品
@@ -290,7 +289,7 @@ public class BookmarkQuantityRenderer {
      * @param quantity 数量
      * @param isFluid 是否是流体/化学品
      */
-    private static String formatQuantity(int quantity, boolean isFluid) {
+    private static String formatQuantity(long quantity, boolean isFluid) {
         String suffix = isFluid ? "L" : "";
         
         if (quantity >= 1000000) {
