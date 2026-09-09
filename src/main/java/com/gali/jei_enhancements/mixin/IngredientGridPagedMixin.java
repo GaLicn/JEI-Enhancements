@@ -93,6 +93,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
         if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
                 && accessor.jei_enhancements$isManagedBookmarkList()) {
             manager.nextPage();
+            manager.save();
             this$0.updateLayout(true);
             cir.setReturnValue(true);
             return;
@@ -125,6 +126,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
         if (manager.getPageCount() > 1 && outer instanceof IVerticalPagingAccessor accessor
                 && accessor.jei_enhancements$isManagedBookmarkList()) {
             manager.previousPage();
+            manager.save();
             this$0.updateLayout(true);
             cir.setReturnValue(true);
             return;

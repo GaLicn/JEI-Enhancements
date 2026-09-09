@@ -60,6 +60,14 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
     private boolean jei_enhancements$managedBookmarkList = false;
 
     /**
+     * updateBounds 会在 updateLayout 之前询问页数；提前识别数据源，避免空白页把导航按钮隐藏。
+     */
+    @Inject(method = "updateBounds", at = @At("HEAD"))
+    private void onUpdateBoundsHead(CallbackInfo ci) {
+        jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
+    }
+
+    /**
      * 拦截updateLayout方法，在垂直布局模式下修正firstItemIndex和分页
      */
     @Inject(method = "updateLayout", at = @At("HEAD"))

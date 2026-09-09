@@ -66,7 +66,9 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
     private void onAdd(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
         // 尝试将新添加的JEI书签与已保存的BookmarkItem关联
-        manager.tryLinkBookmark(bookmark);
+        if (manager.isRestoringBookmarks()) {
+            manager.tryLinkBookmark(bookmark);
+        }
     }
 
     @Inject(method = "getElements", at = @At("HEAD"), cancellable = true)
@@ -212,6 +214,7 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
     private void onSetFromConfigFile(List<IBookmark> bookmarks, CallbackInfo ci) {
 
         BookmarkManager manager = BookmarkManager.getInstance();
+        manager.setRestoringBookmarks(true);
         manager.ensureLoaded();
         
         // 先保留 JEI 自己管理的普通书签，只补齐本模组记录的条目。
@@ -253,6 +256,7 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             }
         }
         manager.save();
+        manager.setRestoringBookmarks(false);
     }
     
     /**

@@ -49,6 +49,9 @@ public class BookmarkManager {
     
     // 是否允许重复添加（用于Mixin）
     private boolean allowDuplicates = false;
+
+    // JEI 正在恢复配置时才允许按 itemKey 重新关联旧书签，避免新书签误占用其它页的数据。
+    private boolean restoringBookmarks = false;
     
     // 当前正在添加的组ID（用于关联新书签）
     private int currentAddingGroupId = DEFAULT_GROUP_ID;
@@ -73,6 +76,14 @@ public class BookmarkManager {
     public void setAllowDuplicates(boolean allow) {
         this.allowDuplicates = allow;
     }
+
+    public boolean isRestoringBookmarks() {
+        return restoringBookmarks;
+    }
+
+    public void setRestoringBookmarks(boolean restoring) {
+        this.restoringBookmarks = restoring;
+    }
     
     public int getCurrentAddingGroupId() {
         return currentAddingGroupId;
@@ -83,35 +94,48 @@ public class BookmarkManager {
     }
 
     public int getCurrentPageId() {
+        ensureLoaded();
+        if (pageIds.isEmpty()) {
+            pageIds.add(DEFAULT_GROUP_ID);
+            currentPageIndex = 0;
+        }
+        currentPageIndex = Math.max(0, Math.min(currentPageIndex, pageIds.size() - 1));
         return pageIds.get(currentPageIndex);
     }
 
     public int getPageCount() {
+        ensureLoaded();
         return pageIds.size();
     }
 
     public int getCurrentPageIndex() {
+        ensureLoaded();
         return currentPageIndex;
     }
 
     public boolean nextPage() {
+        ensureLoaded();
         if (pageIds.size() <= 1) {
             return false;
         }
         currentPageIndex = (currentPageIndex + 1) % pageIds.size();
+        markDirty();
         return true;
     }
 
     public boolean previousPage() {
+        ensureLoaded();
         if (pageIds.size() <= 1) {
             return false;
         }
         currentPageIndex = (currentPageIndex - 1 + pageIds.size()) % pageIds.size();
+        markDirty();
         return true;
     }
 
     /** 新页插入到当前页之后，并立即切换到该空白页。 */
     public void addPageAfterCurrent() {
+        ensureLoaded();
         int pageId = nextPageId++;
         pageIds.add(currentPageIndex + 1, pageId);
         currentPageIndex++;
@@ -124,6 +148,7 @@ public class BookmarkManager {
      * @return 被删除的页 ID；仅剩一页时返回 {@code -1}。
      */
     public int removeCurrentPage() {
+        ensureLoaded();
         if (pageIds.size() <= 1) {
             return -1;
         }
@@ -146,6 +171,7 @@ public class BookmarkManager {
     }
 
     public boolean isBookmarkOnCurrentPage(IBookmark bookmark) {
+        ensureLoaded();
         BookmarkItem item = findBookmarkItem(bookmark);
         return item == null || item.getPageId() == getCurrentPageId();
     }
@@ -260,6 +286,9 @@ public class BookmarkManager {
      * 按顺序匹配第一个itemKey相同且未关联的BookmarkItem
      */
     public void tryLinkBookmark(IBookmark bookmark) {
+        if (!restoringBookmarks) {
+            return;
+        }
         // 确保数据已加载
         ensureLoaded();
         
@@ -522,185 +551,109 @@ public class BookmarkManager {
     public void recalculateCraftingChainInGroup(int groupId) {
         BookmarkGroup group = groups.get(groupId);
         if (group == null || !group.isCraftingChainEnabled()) return;
-        
         List<BookmarkItem> items = getGroupItems(groupId);
         if (items.isEmpty()) return;
-        
-        // 分离RESULT和INGREDIENT
-        List<BookmarkItem> results = new ArrayList<>();
-        List<BookmarkItem> ingredients = new ArrayList<>();
-        
+
+        // 一个 RESULT 以及其后的 INGREDIENT 构成一个配方段，避免跨组/跨配方串联。
+        List<RecipeNode> recipes = new ArrayList<>();
+        RecipeNode current = null;
         for (BookmarkItem item : items) {
             if (item.isOutput()) {
-                results.add(item);
-            } else if (item.isIngredient()) {
-                ingredients.add(item);
+                current = new RecipeNode(item);
+                recipes.add(current);
+            } else if (item.isIngredient() && current != null) {
+                current.ingredients.add(item);
             }
         }
-        
-        if (results.isEmpty()) return;
-        
-        // 建立INGREDIENT到RESULT的映射（NEI的preferredItems）
-        java.util.Map<BookmarkItem, BookmarkItem> preferredItems = new java.util.HashMap<>();
-        for (BookmarkItem result : results) {
-            collectPreferredItems(result, ingredients, results, preferredItems, new HashSet<>());
+        if (recipes.isEmpty()) return;
+
+        // preferredItems：同一物品存在多个产方时，按书签顺序选择第一个，行为与 NEI 一致且可预测。
+        Map<String, RecipeNode> providers = new LinkedHashMap<>();
+        for (RecipeNode recipe : recipes) {
+            providers.putIfAbsent(recipe.result.getItemKey(), recipe);
         }
-        
-        // 找到顶层配方（第一个RESULT）
-        BookmarkItem firstResult = results.get(0);
-        
-        // 用于累加每个RESULT的需求量
-        java.util.Map<BookmarkItem, Long> requiredAmount = new java.util.HashMap<>();
-        
-        // 用于跟踪每个RESULT当前的产出量（计算过程中使用）
-        java.util.Map<BookmarkItem, Long> currentAmount = new java.util.HashMap<>();
-        
-        // 初始化：非顶层配方的产出量为0
-        for (BookmarkItem result : results) {
-            if (result == firstResult) {
-                currentAmount.put(result, result.getAmount());
-            } else {
-                currentAmount.put(result, 0L);
-            }
-        }
-        
-        // 顶层配方的multiplier
-        long topMultiplier = firstResult.getMultiplier();
-        
-        // 从顶层配方开始，递归计算所有配方的需求量
-        calculateChainRequirements(firstResult, topMultiplier, ingredients, preferredItems, 
-                requiredAmount, currentAmount, new HashSet<>());
-        
-        // 最后，根据计算结果更新所有配方的multiplier
-        for (BookmarkItem result : results) {
-            if (result == firstResult) continue;
-            
-            long amount = currentAmount.getOrDefault(result, 0L);
-            if (amount > 0) {
-                long multiplier = (long) Math.ceil((double) amount / result.getFactor());
-                result.setMultiplier(multiplier);
-                
-                // 同步更新这个配方的INGREDIENT
-                List<BookmarkItem> recipeIngrs = findRecipeIngredients(result, ingredients);
-                for (BookmarkItem ingr : recipeIngrs) {
-                    ingr.setMultiplier(multiplier);
+
+        Set<RecipeNode> consumedOutputs = new HashSet<>();
+        for (RecipeNode recipe : recipes) {
+            for (BookmarkItem ingredient : recipe.ingredients) {
+                RecipeNode provider = providers.get(ingredient.getItemKey());
+                if (provider != null && provider != recipe) {
+                    consumedOutputs.add(provider);
                 }
             }
         }
-        
+
+        // 没有被其它配方消耗的 RESULT 是顶层配方；全是循环时退化为每个配方各计算一次。
+        List<RecipeNode> roots = recipes.stream()
+                .filter(recipe -> !consumedOutputs.contains(recipe))
+                .toList();
+        if (roots.isEmpty()) roots = recipes;
+
+        Map<RecipeNode, Long> requiredCrafts = new HashMap<>();
+        Map<RecipeNode, Long> processedCrafts = new HashMap<>();
+        Map<RecipeNode, Long> requiredUnits = new HashMap<>();
+        ArrayDeque<RecipeNode> pending = new ArrayDeque<>();
+        for (RecipeNode root : roots) {
+            long requested = Math.max(1, root.result.getMultiplier());
+            if (requested > requiredCrafts.getOrDefault(root, 0L)) {
+                requiredCrafts.put(root, requested);
+                pending.add(root);
+            }
+        }
+
+        // 使用队列传播需求，能正确合并多个父配方的输入，并能安全终止循环依赖。
+        int iterationLimit = Math.max(64, recipes.size() * 32);
+        int iterations = 0;
+        while (!pending.isEmpty() && iterations++ < iterationLimit) {
+            RecipeNode recipe = pending.removeFirst();
+            long crafts = requiredCrafts.getOrDefault(recipe, 0L);
+            long alreadyProcessed = processedCrafts.getOrDefault(recipe, 0L);
+            long deltaCrafts = crafts - alreadyProcessed;
+            if (deltaCrafts <= 0) continue;
+            processedCrafts.put(recipe, crafts);
+            for (BookmarkItem ingredient : recipe.ingredients) {
+                RecipeNode provider = providers.get(ingredient.getItemKey());
+                if (provider == null || provider == recipe) continue;
+
+                long needed = saturatingMultiply(ingredient.getFactor(), deltaCrafts);
+                long total = saturatingAdd(requiredUnits.getOrDefault(provider, 0L), needed);
+                requiredUnits.put(provider, total);
+                long providerCrafts = ceilDivide(total, provider.result.getFactor());
+                if (providerCrafts > requiredCrafts.getOrDefault(provider, 0L)) {
+                    requiredCrafts.put(provider, providerCrafts);
+                    pending.addLast(provider);
+                }
+            }
+        }
+        if (!pending.isEmpty()) {
+            JEIEnhancements.LOGGER.warn("Crafting chain for group {} contains an unstable dependency cycle", groupId);
+        }
+
+        for (RecipeNode recipe : recipes) {
+            long multiplier = Math.max(1, requiredCrafts.getOrDefault(recipe, 1L));
+            recipe.result.setMultiplier(multiplier);
+            for (BookmarkItem ingredient : recipe.ingredients) {
+                ingredient.setMultiplier(multiplier);
+            }
+        }
         markDirty();
     }
-    
-    /**
-     * 递归计算配方链的需求量（参考NEI的calculateSuitableRecipe）
-     * 
-     * 关键逻辑：
-     * 1. 累加需求量到requiredAmount
-     * 2. 只有当需求量超过当前产出量时，才增加合成次数（shift）
-     * 3. 增加合成次数后，递归处理该配方的INGREDIENT
-     */
-    private void calculateChainRequirements(BookmarkItem resultItem, long multiplier,
-            List<BookmarkItem> allIngredients,
-            java.util.Map<BookmarkItem, BookmarkItem> preferredItems,
-            java.util.Map<BookmarkItem, Long> requiredAmount,
-            java.util.Map<BookmarkItem, Long> currentAmount,
-            Set<BookmarkItem> visited) {
-        
-        if (visited.contains(resultItem)) return;
-        visited.add(resultItem);
-        
-        // 找到这个配方的INGREDIENT
-        List<BookmarkItem> recipeIngredients = findRecipeIngredients(resultItem, allIngredients);
-        
-        // 对于每个INGREDIENT，检查是否有配方能提供它
-        for (BookmarkItem ingrItem : recipeIngredients) {
-            BookmarkItem prefResult = preferredItems.get(ingrItem);
-            if (prefResult != null) {
-                // 计算这个INGREDIENT需要多少
-                long ingrNeeded = saturatingMultiply(ingrItem.getFactor(), multiplier);
-                
-                // 累加到提供这个物品的RESULT的需求量上
-                long prevRequired = requiredAmount.getOrDefault(prefResult, 0L);
-                long newRequired = saturatingAdd(prevRequired, ingrNeeded);
-                requiredAmount.put(prefResult, newRequired);
-                
-                // 计算需要增加多少合成次数（NEI的shift计算）
-                // shift = ceil((requiredAmount - currentAmount) / factor)
-                long prevAmount = currentAmount.getOrDefault(prefResult, 0L);
-                long shift = (long) Math.ceil((double)(newRequired - prevAmount) / prefResult.getFactor());
-                
-                if (shift > 0) {
-                    // 增加这个配方的产出量
-                    long newAmount = saturatingAdd(prevAmount, saturatingMultiply(shift, prefResult.getFactor()));
-                    currentAmount.put(prefResult, newAmount);
-                    
-                    // 递归处理这个配方的INGREDIENT（只传入新增的shift）
-                    calculateChainRequirements(prefResult, shift, allIngredients, preferredItems, 
-                            requiredAmount, currentAmount, visited);
-                }
-            }
+
+    /** 书签中的一个连续配方段。 */
+    private static final class RecipeNode {
+        private final BookmarkItem result;
+        private final List<BookmarkItem> ingredients = new ArrayList<>();
+
+        private RecipeNode(BookmarkItem result) {
+            this.result = result;
         }
-        
-        visited.remove(resultItem);
     }
-    
-    /**
-     * 收集INGREDIENT到RESULT的映射
-     */
-    private void collectPreferredItems(BookmarkItem sourceResult, List<BookmarkItem> allIngredients, 
-            List<BookmarkItem> allResults, java.util.Map<BookmarkItem, BookmarkItem> preferredItems, 
-            Set<BookmarkItem> visited) {
-        
-        if (visited.contains(sourceResult)) return;
-        visited.add(sourceResult);
-        
-        // 找到属于这个RESULT配方的INGREDIENT
-        List<BookmarkItem> recipeIngredients = findRecipeIngredients(sourceResult, allIngredients);
-        
-        for (BookmarkItem ingrItem : recipeIngredients) {
-            if (preferredItems.containsKey(ingrItem)) continue;
-            
-            // 查找能提供这个INGREDIENT的RESULT
-            for (BookmarkItem resultItem : allResults) {
-                if (resultItem == sourceResult) continue;
-                if (visited.contains(resultItem)) continue;
-                
-                // 检查这个RESULT是否能提供这个INGREDIENT（itemKey相同）
-                if (resultItem.getItemKey().equals(ingrItem.getItemKey())) {
-                    preferredItems.put(ingrItem, resultItem);
-                    // 递归收集这个RESULT的配方的INGREDIENT
-                    collectPreferredItems(resultItem, allIngredients, allResults, preferredItems, visited);
-                    break;
-                }
-            }
-        }
-        
-        visited.remove(sourceResult);
-    }
-    
-    /**
-     * 找到属于某个RESULT配方的INGREDIENT（紧跟在RESULT后面的INGREDIENT）
-     */
-    private List<BookmarkItem> findRecipeIngredients(BookmarkItem result, List<BookmarkItem> allIngredients) {
-        List<BookmarkItem> recipeIngredients = new ArrayList<>();
-        List<BookmarkItem> allItems = getAllItems();
-        
-        int resultIndex = allItems.indexOf(result);
-        if (resultIndex < 0) return recipeIngredients;
-        
-        // 收集紧跟在这个RESULT后面的INGREDIENT
-        for (int i = resultIndex + 1; i < allItems.size(); i++) {
-            BookmarkItem item = allItems.get(i);
-            if (item.isOutput()) {
-                // 遇到下一个RESULT，停止
-                break;
-            }
-            if (item.isIngredient() && allIngredients.contains(item)) {
-                recipeIngredients.add(item);
-            }
-        }
-        
-        return recipeIngredients;
+
+    private long ceilDivide(long numerator, long denominator) {
+        if (numerator <= 0) return 0;
+        if (denominator <= 1) return numerator;
+        long quotient = numerator / denominator;
+        return numerator % denominator == 0 ? quotient : quotient + 1;
     }
     
     /**
@@ -824,6 +777,7 @@ public class BookmarkManager {
             JsonObject root = new JsonObject();
             root.addProperty("nextGroupId", nextGroupId);
             root.addProperty("nextPageId", nextPageId);
+            root.addProperty("currentPageIndex", currentPageIndex);
             root.add("pageIds", new Gson().toJsonTree(pageIds));
             
             // 保存组信息
@@ -890,12 +844,22 @@ public class BookmarkManager {
             if (root.has("pageIds")) {
                 pageIds.clear();
                 for (JsonElement pageId : root.getAsJsonArray("pageIds")) {
-                    pageIds.add(pageId.getAsInt());
+                    int id = pageId.getAsInt();
+                    if (!pageIds.contains(id)) {
+                        pageIds.add(id);
+                    }
                 }
                 if (pageIds.isEmpty()) {
                     pageIds.add(DEFAULT_GROUP_ID);
                 }
             }
+            if (!pageIds.contains(DEFAULT_GROUP_ID)) {
+                pageIds.add(0, DEFAULT_GROUP_ID);
+            }
+            if (root.has("currentPageIndex")) {
+                currentPageIndex = root.get("currentPageIndex").getAsInt();
+            }
+            currentPageIndex = Math.max(0, Math.min(currentPageIndex, pageIds.size() - 1));
             
             // 加载组信息
             if (root.has("groups")) {
@@ -944,6 +908,10 @@ public class BookmarkManager {
                     if (itemObj.has("pageId")) {
                         item.setPageId(itemObj.get("pageId").getAsInt());
                     }
+                    if (!pageIds.contains(item.getPageId())) {
+                        // 旧存档中的无效页号统一迁移到第一页。
+                        item.setPageId(DEFAULT_GROUP_ID);
+                    }
                     
                     // 加载amount
                     if (itemObj.has("amount")) {
@@ -953,6 +921,9 @@ public class BookmarkManager {
                     bookmarkItems.add(item);
                 }
             }
+
+            int maxPageId = pageIds.stream().mapToInt(Integer::intValue).max().orElse(DEFAULT_GROUP_ID);
+            nextPageId = Math.max(nextPageId, maxPageId + 1);
             
             dirty = false;
             loaded = true;
@@ -981,7 +952,8 @@ public class BookmarkManager {
         pageIds.add(DEFAULT_GROUP_ID);
         nextPageId = 1;
         currentPageIndex = 0;
-        loaded = false;
+        // 清空后保持当前内存状态，避免下一次读取页码时又把旧文件加载回来。
+        loaded = true;
         markDirty();
     }
     

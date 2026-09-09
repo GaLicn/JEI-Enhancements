@@ -34,6 +34,12 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
     
     @Shadow public abstract boolean isListDisplayed();
 
+    /** updateBounds 完成后按钮区域已稳定，点击事件无需等待一次 drawScreen。 */
+    @Inject(method = "updateBounds", at = @At("TAIL"))
+    private void onUpdateBoundsTail(CallbackInfo ci) {
+        jei_enhancements$updatePageButtonAreas();
+    }
+
     /**
      * 在绘制书签后，渲染自定义数量和组面板
      */
@@ -59,10 +65,25 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
         ImmutableRect2i back = contents.getBackButtonArea();
         ImmutableRect2i next = contents.getNextPageButtonArea();
         int size = Math.min(12, Math.max(1, back.getHeight() - 4));
-        jei_enhancements$removePageArea = back.isEmpty() ? ImmutableRect2i.EMPTY
-                : new ImmutableRect2i(back.getX() - size - 2, back.getY() + 4, size, size);
-        jei_enhancements$addPageArea = next.isEmpty() ? ImmutableRect2i.EMPTY
-                : new ImmutableRect2i(next.getX() + next.getWidth() + 2, next.getY() + 4, size, size);
+        if (back.isEmpty() || next.isEmpty()) {
+            jei_enhancements$removePageArea = ImmutableRect2i.EMPTY;
+            jei_enhancements$addPageArea = ImmutableRect2i.EMPTY;
+            return;
+        }
+
+        int buttonY = back.getY() + (back.getHeight() - size) / 2;
+        int labelLeft = back.getX() + back.getWidth();
+        int labelRight = next.getX();
+        int available = labelRight - labelLeft;
+        if (available >= size * 2 + 6) {
+            // 按 NEI 的页码布局，把管理按钮放在页码文字两侧。
+            jei_enhancements$removePageArea = new ImmutableRect2i(labelLeft + 2, buttonY, size, size);
+            jei_enhancements$addPageArea = new ImmutableRect2i(labelRight - size - 2, buttonY, size, size);
+        } else {
+            // 页码区域过窄时退到导航箭头外侧，仍保证按钮可点击。
+            jei_enhancements$removePageArea = new ImmutableRect2i(back.getX() - size - 2, buttonY, size, size);
+            jei_enhancements$addPageArea = new ImmutableRect2i(next.getX() + next.getWidth() + 2, buttonY, size, size);
+        }
     }
 
     @Unique
