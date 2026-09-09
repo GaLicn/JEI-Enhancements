@@ -7,10 +7,12 @@ import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
 import mezz.jei.gui.PageNavigation;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.BookmarkList;
-import mezz.jei.gui.overlay.IIngredientGridSource;
-import mezz.jei.gui.overlay.IngredientGrid;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.common.util.ImmutablePoint2i;
+import mezz.jei.common.util.ImmutableRect2i;
+import mezz.jei.gui.overlay.ingredients.IIngredientGridSource;
+import mezz.jei.gui.overlay.ingredients.IngredientGrid;
+import mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 修改IngredientGridWithNavigation的分页逻辑
@@ -36,12 +39,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
 
     @Shadow @Final
     private IIngredientGridSource ingredientSource;
-
-    @Shadow
-    private int firstItemIndex;
-    
-    @Shadow @Final
-    private PageNavigation navigation;
 
     // 缓存的组信息
     @Unique
@@ -67,11 +64,10 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
     }
 
-    /**
-     * 拦截updateLayout方法，在垂直布局模式下修正firstItemIndex和分页
-     */
-    @Inject(method = "updateLayout", at = @At("HEAD"))
-    private void onUpdateLayoutHead(boolean resetToFirstPage, CallbackInfo ci) {
+    /** 在新版 JEI 的 bounds 更新阶段刷新书签分组缓存。 */
+    @Inject(method = "updateBounds", at = @At("HEAD"))
+    private void onUpdateBounds(ImmutableRect2i availableArea, Set<ImmutableRect2i> guiExclusionAreas,
+            ImmutablePoint2i mouseExclusionPoint, CallbackInfo ci) {
         // 逻辑页允许为空，必须依据数据源类型识别书签列表，不能依赖当前元素数量。
         jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
@@ -102,36 +98,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
             jei_enhancements$lastElementCount = ingredientList.size();
         }
         
-        if (resetToFirstPage) {
-            jei_enhancements$currentGroupIndex = 0;
-            firstItemIndex = 0;
-        } else {
-            // 根据firstItemIndex计算当前组索引
-            jei_enhancements$currentGroupIndex = jei_enhancements$findGroupIndexForElementIndex(firstItemIndex);
-        }
-
-        // 确保firstItemIndex对应当前组的开始位置
-        if (jei_enhancements$groupRanges != null && !jei_enhancements$groupRanges.isEmpty() 
-                && jei_enhancements$currentGroupIndex < jei_enhancements$groupRanges.size()) {
-            firstItemIndex = jei_enhancements$groupRanges.get(jei_enhancements$currentGroupIndex)[0];
-        }
-    }
-    
-    /**
-     * 在updateLayout结束后更新页码显示
-     */
-    @Inject(method = "updateLayout", at = @At("TAIL"))
-    private void onUpdateLayoutTail(boolean resetToFirstPage, CallbackInfo ci) {
-        if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
-            return;
-        }
-        
-        if (jei_enhancements$groupRanges == null || jei_enhancements$groupRanges.isEmpty()) {
-            return;
-        }
-        
-        // 强制更新页码显示
-        navigation.updatePageNumber();
     }
     
     /**
@@ -301,7 +267,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         }
         
         jei_enhancements$currentGroupIndex = nextGroupIndex;
-        firstItemIndex = jei_enhancements$groupRanges.get(nextGroupIndex)[0];
         return true;
     }
     
@@ -324,7 +289,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         }
         
         jei_enhancements$currentGroupIndex = prevGroupIndex;
-        firstItemIndex = jei_enhancements$groupRanges.get(prevGroupIndex)[0];
         return true;
     }
     

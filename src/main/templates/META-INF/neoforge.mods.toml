@@ -91,7 +91,7 @@ config="${mod_id}.mixins.json"
 [[dependencies.${mod_id}]]
     modId="jei"
     type="required"
-    versionRange = "[19.27.0,)"
+    versionRange = "[19.50.0,)"
     ordering = "NONE"
     side = "BOTH"
 

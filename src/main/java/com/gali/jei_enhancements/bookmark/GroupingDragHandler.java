@@ -1,6 +1,6 @@
 package com.gali.jei_enhancements.bookmark;
 
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.*;

@@ -10,7 +10,7 @@ import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.bookmarks.BookmarkFactory;
-import mezz.jei.gui.overlay.IIngredientGridSource.SourceListChangedListener;
+import mezz.jei.gui.overlay.ingredients.IIngredientGridSource.SourceListChangedListener;
 import mezz.jei.gui.overlay.elements.IElement;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;

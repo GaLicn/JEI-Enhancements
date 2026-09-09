@@ -6,12 +6,12 @@ import com.gali.jei_enhancements.bookmark.GroupingDragHandler;
 import com.gali.jei_enhancements.bookmark.IPageManagementAccessor;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.common.Internal;
-import mezz.jei.common.gui.elements.DrawableNineSliceTexture;
+import mezz.jei.common.gui.elements.ScalableDrawable;
 import mezz.jei.common.gui.textures.Textures;
 import mezz.jei.gui.bookmarks.BookmarkList;
-import mezz.jei.gui.overlay.IngredientGrid;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.gui.overlay.ingredients.IngredientGrid;
+import mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -110,7 +110,7 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
     private void jei_enhancements$drawJeiButton(GuiGraphics graphics, Textures textures,
             ImmutableRect2i area, int mouseX, int mouseY) {
         boolean hovered = area.contains(mouseX, mouseY);
-        DrawableNineSliceTexture texture = textures.getButtonForState(false, true, hovered);
+        ScalableDrawable texture = textures.getButtonForState(false, true, hovered);
         texture.draw(graphics, area.getX(), area.getY(), area.getWidth(), area.getHeight());
     }
 

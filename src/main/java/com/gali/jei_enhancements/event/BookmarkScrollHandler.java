@@ -2,6 +2,7 @@ package com.gali.jei_enhancements.event;
 
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import com.gali.jei_enhancements.mixin.accessor.BookmarkOverlayAccessor;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.gui.bookmarks.IBookmark;
@@ -53,7 +54,8 @@ public class BookmarkScrollHandler {
         }
 
         // 检查鼠标是否在书签区域
-        if (!overlay.isMouseOver(mouseX, mouseY)) {
+        // 新版 JEI 将鼠标区域判断放在内容网格中。
+        if (!((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents().isMouseOver(mouseX, mouseY)) {
             return;
         }
 

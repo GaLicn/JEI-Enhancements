@@ -114,7 +114,7 @@ configurations {
 }
 
 dependencies {
-    implementation "curse.maven:jei-238222:7420587"
+    implementation "curse.maven:jei-238222:8759217"
     implementation "curse.maven:mekanism-268560:7132168"
 }
 

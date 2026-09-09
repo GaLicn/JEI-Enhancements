@@ -12,8 +12,8 @@ import mezz.jei.api.runtime.IBookmarkOverlay;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import mezz.jei.gui.overlay.elements.IElement;
 import com.gali.jei_enhancements.mixin.accessor.BookmarkOverlayAccessor;
@@ -278,7 +278,7 @@ public class BookmarkLayoutClickHandler {
         try {
             IngredientGridWithNavigation contents = ((BookmarkOverlayAccessor) overlay).jeiEnhancements$getContents();
             // 保留已有槽位，仅重置分页并重新填充元素；clear 会删除槽位导致界面空白。
-            contents.updateLayout(true);
+            contents.updateLayoutToFirstPage();
 
         } catch (Exception e) {
             JEIEnhancements.LOGGER.error("Error refreshing bookmark layout", e);
