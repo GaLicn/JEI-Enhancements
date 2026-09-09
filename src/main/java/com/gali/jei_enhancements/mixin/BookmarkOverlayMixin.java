@@ -5,6 +5,9 @@ import com.gali.jei_enhancements.bookmark.BookmarkQuantityRenderer;
 import com.gali.jei_enhancements.bookmark.GroupingDragHandler;
 import com.gali.jei_enhancements.bookmark.IPageManagementAccessor;
 import mezz.jei.common.util.ImmutableRect2i;
+import mezz.jei.common.Internal;
+import mezz.jei.common.gui.elements.DrawableNineSliceTexture;
+import mezz.jei.common.gui.textures.Textures;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.overlay.IngredientGrid;
 import mezz.jei.gui.overlay.IngredientGridWithNavigation;
@@ -89,18 +92,34 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
     @Unique
     private void jei_enhancements$drawPageButtons(GuiGraphics graphics, int mouseX, int mouseY) {
         if (jei_enhancements$addPageArea.isEmpty()) return;
-        int addColor = jei_enhancements$addPageArea.contains(mouseX, mouseY) ? 0xFF88CC88 : 0xFF557755;
-        int removeColor = jei_enhancements$removePageArea.contains(mouseX, mouseY) ? 0xFFFF8888 : 0xFF995555;
-        graphics.fill(jei_enhancements$addPageArea.getX(), jei_enhancements$addPageArea.getY(),
-                jei_enhancements$addPageArea.getX() + jei_enhancements$addPageArea.getWidth(),
-                jei_enhancements$addPageArea.getY() + jei_enhancements$addPageArea.getHeight(), addColor);
-        graphics.fill(jei_enhancements$removePageArea.getX(), jei_enhancements$removePageArea.getY(),
-                jei_enhancements$removePageArea.getX() + jei_enhancements$removePageArea.getWidth(),
-                jei_enhancements$removePageArea.getY() + jei_enhancements$removePageArea.getHeight(), removeColor);
-        graphics.drawString(Minecraft.getInstance().font, "+", jei_enhancements$addPageArea.getX() + 3,
-                jei_enhancements$addPageArea.getY() + 1, 0xFFFFFFFF, false);
-        graphics.drawString(Minecraft.getInstance().font, "-", jei_enhancements$removePageArea.getX() + 4,
-                jei_enhancements$removePageArea.getY() + 1, 0xFFFFFFFF, false);
+        // 直接复用 JEI GuiIconButton 使用的九宫格纹理，保持原生按钮背景和悬停效果。
+        Textures textures = Internal.getTextures();
+        jei_enhancements$drawJeiButton(graphics, textures, jei_enhancements$addPageArea, mouseX, mouseY);
+        if (!jei_enhancements$removePageArea.isEmpty()) {
+            jei_enhancements$drawJeiButton(graphics, textures, jei_enhancements$removePageArea, mouseX, mouseY);
+        }
+
+        var font = Minecraft.getInstance().font;
+        jei_enhancements$drawButtonLabel(graphics, font, "+", jei_enhancements$addPageArea);
+        if (!jei_enhancements$removePageArea.isEmpty()) {
+            jei_enhancements$drawButtonLabel(graphics, font, "-", jei_enhancements$removePageArea);
+        }
+    }
+
+    @Unique
+    private void jei_enhancements$drawJeiButton(GuiGraphics graphics, Textures textures,
+            ImmutableRect2i area, int mouseX, int mouseY) {
+        boolean hovered = area.contains(mouseX, mouseY);
+        DrawableNineSliceTexture texture = textures.getButtonForState(false, true, hovered);
+        texture.draw(graphics, area.getX(), area.getY(), area.getWidth(), area.getHeight());
+    }
+
+    @Unique
+    private void jei_enhancements$drawButtonLabel(GuiGraphics graphics, net.minecraft.client.gui.Font font,
+            String label, ImmutableRect2i area) {
+        int x = area.getX() + (area.getWidth() - font.width(label)) / 2;
+        int y = area.getY() + (area.getHeight() - font.lineHeight) / 2;
+        graphics.drawString(font, label, x, y, 0xFFFFFFFF, false);
     }
 
     @Override
