@@ -4,7 +4,6 @@ import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
-import mezz.jei.gui.PageNavigation;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.common.util.ImmutablePoint2i;
@@ -55,14 +54,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
 
     @Unique
     private boolean jei_enhancements$managedBookmarkList = false;
-
-    /**
-     * updateBounds 会在 updateLayout 之前询问页数；提前识别数据源，避免空白页把导航按钮隐藏。
-     */
-    @Inject(method = "updateBounds", at = @At("HEAD"))
-    private void onUpdateBoundsHead(CallbackInfo ci) {
-        jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
-    }
 
     /** 在新版 JEI 的 bounds 更新阶段刷新书签分组缓存。 */
     @Inject(method = "updateBounds", at = @At("HEAD"))

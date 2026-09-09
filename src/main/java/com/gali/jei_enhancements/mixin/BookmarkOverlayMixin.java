@@ -37,17 +37,18 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
     
     @Shadow public abstract boolean isListDisplayed();
 
-    /** updateBounds 完成后按钮区域已稳定，点击事件无需等待一次 drawScreen。 */
+    /** bounds 完成后按钮区域已稳定，点击事件无需等待一次绘制。 */
     @Inject(method = "updateBounds", at = @At("TAIL"))
-    private void onUpdateBoundsTail(CallbackInfo ci) {
+    private void onUpdateBoundsTail(mezz.jei.api.gui.handlers.IGuiProperties properties,
+            java.util.Set<ImmutableRect2i> exclusionAreas, CallbackInfo ci) {
         jei_enhancements$updatePageButtonAreas();
     }
 
     /**
      * 在绘制书签后，渲染自定义数量和组面板
      */
-    @Inject(method = "drawScreen", at = @At("TAIL"))
-    private void onDrawScreenTail(Minecraft minecraft, GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
+    @Inject(method = "drawForeground", at = @At("TAIL"))
+    private void onDrawForegroundTail(Minecraft minecraft, GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         jei_enhancements$updatePageButtonAreas();
         jei_enhancements$drawPageButtons(guiGraphics, mouseX, mouseY);
         if (isListDisplayed()) {
@@ -69,8 +70,13 @@ public abstract class BookmarkOverlayMixin implements IPageManagementAccessor {
         ImmutableRect2i next = contents.getNextPageButtonArea();
         int size = Math.min(12, Math.max(1, back.getHeight() - 4));
         if (back.isEmpty() || next.isEmpty()) {
-            jei_enhancements$removePageArea = ImmutableRect2i.EMPTY;
-            jei_enhancements$addPageArea = ImmutableRect2i.EMPTY;
+            // 单页时 JEI 会隐藏导航按钮，但自定义页管理按钮仍需可见。
+            ImmutableRect2i background = contents.getBackgroundArea();
+            if (background.isEmpty()) return;
+            int buttonY = background.getY() + background.getHeight() - size - 2;
+            int centerX = background.getX() + background.getWidth() / 2;
+            jei_enhancements$removePageArea = new ImmutableRect2i(centerX - size - 3, buttonY, size, size);
+            jei_enhancements$addPageArea = new ImmutableRect2i(centerX + 3, buttonY, size, size);
             return;
         }
 

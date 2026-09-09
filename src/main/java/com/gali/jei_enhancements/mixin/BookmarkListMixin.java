@@ -6,10 +6,14 @@ import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IdentityDistinctBookmark;
 import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import mezz.jei.gui.bookmarks.BookmarkFactory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.registries.BuiltInRegistries;
 import mezz.jei.gui.overlay.ingredients.IIngredientGridSource.SourceListChangedListener;
 import mezz.jei.gui.overlay.elements.IElement;
 import org.spongepowered.asm.mixin.Final;
@@ -45,7 +49,10 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
 
     @Shadow @Final
     private BookmarkFactory bookmarkFactory;
-    
+
+    @Shadow @Final
+    private IIngredientManager ingredientManager;
+
     /**
      * 拦截contains方法
      * 当BookmarkManager标记为"允许重复"时，总是返回false，允许添加
@@ -104,6 +111,12 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             ((BookmarkList) (Object) this).remove(bookmark);
         }
         manager.removeBookmarksFromPage(pageId);
+        jei_enhancements$notifyListeners();
+    }
+
+    @Override
+    @Unique
+    public void jeiEnhancements$refreshPage() {
         jei_enhancements$notifyListeners();
     }
     
@@ -234,6 +247,18 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             IBookmark bookmark = candidates == null || candidates.isEmpty() ? null : candidates.removeFirst();
             if (bookmark == null) {
                 IngredientBookmark<?> template = templates.get(item.getItemKey());
+                if (template == null && item.getItemKey().startsWith("minecraft:")) {
+                    // JEI 新版不会自动保留旧配置中已删除的条目，按稳定的物品 ID 重建书签。
+                    ResourceLocation id = ResourceLocation.tryParse(item.getItemKey());
+                    if (id != null) {
+                        var stack = BuiltInRegistries.ITEM.getOptional(id).map(ItemStack::new).orElse(ItemStack.EMPTY);
+                        if (!stack.isEmpty()) {
+                            template = bookmarkFactory.create(
+                                    ingredientManager.createTypedIngredient(stack, false)
+                                            .orElseThrow());
+                        }
+                    }
+                }
                 if (template != null) {
                     bookmark = bookmarkFactory.create(template.getIngredient());
                     ((IdentityDistinctBookmark) bookmark).jeiEnhancements$setIdentityDistinct(true);
@@ -255,6 +280,8 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
                 manager.registerPlainBookmark(bookmark);
             }
         }
+        // 重建条目直接写入列表，需补发事件以让新版网格立刻重新布局。
+        jei_enhancements$notifyListeners();
         manager.save();
         manager.setRestoringBookmarks(false);
     }

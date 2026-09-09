@@ -3,6 +3,9 @@ package com.gali.jei_enhancements.mixin;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
+import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
+import com.gali.jei_enhancements.mixin.accessor.IngredientGridNavigationControllerAccessor;
+import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.input.IPaged;
 import mezz.jei.gui.overlay.ingredients.IIngredientGridSource;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,7 +31,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
     @Inject(method = "getPageCount", at = @At("HEAD"), cancellable = true)
     private void onGetPageCount(CallbackInfoReturnable<Integer> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        if (manager.getPageCount() > 1 && ingredientSource instanceof mezz.jei.gui.bookmarks.BookmarkList) {
+        if (manager.getPageCount() > 1 && ingredientSource instanceof BookmarkList) {
             cir.setReturnValue(manager.getPageCount());
             return;
         }
@@ -44,7 +47,7 @@ public abstract class IngredientGridPagedMixin implements IPaged {
     @Inject(method = "getPageNumber", at = @At("HEAD"), cancellable = true)
     private void onGetPageNumber(CallbackInfoReturnable<Integer> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        if (manager.getPageCount() > 1 && ingredientSource instanceof mezz.jei.gui.bookmarks.BookmarkList) {
+        if (manager.getPageCount() > 1 && ingredientSource instanceof BookmarkList) {
             cir.setReturnValue(manager.getCurrentPageIndex());
             return;
         }
@@ -60,9 +63,11 @@ public abstract class IngredientGridPagedMixin implements IPaged {
     @Inject(method = "nextPage", at = @At("HEAD"), cancellable = true)
     private void onNextPage(CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        if (manager.getPageCount() > 1 && ingredientSource instanceof mezz.jei.gui.bookmarks.BookmarkList) {
+        if (manager.getPageCount() > 1 && ingredientSource instanceof BookmarkList bookmarkList) {
             manager.nextPage();
             manager.save();
+            ((IBookmarkPageAccessor) bookmarkList).jeiEnhancements$refreshPage();
+            ((IngredientGridNavigationControllerAccessor) this).jeiEnhancements$updateLayoutStartingAt(0);
             cir.setReturnValue(true);
             return;
         }
@@ -78,9 +83,11 @@ public abstract class IngredientGridPagedMixin implements IPaged {
     @Inject(method = "previousPage", at = @At("HEAD"), cancellable = true)
     private void onPreviousPage(CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        if (manager.getPageCount() > 1 && ingredientSource instanceof mezz.jei.gui.bookmarks.BookmarkList) {
+        if (manager.getPageCount() > 1 && ingredientSource instanceof BookmarkList bookmarkList) {
             manager.previousPage();
             manager.save();
+            ((IBookmarkPageAccessor) bookmarkList).jeiEnhancements$refreshPage();
+            ((IngredientGridNavigationControllerAccessor) this).jeiEnhancements$updateLayoutStartingAt(0);
             cir.setReturnValue(true);
             return;
         }

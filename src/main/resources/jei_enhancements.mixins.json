@@ -14,6 +14,7 @@
     "accessor.BookmarkOverlayAccessor",
     "accessor.IngredientGridAccessor",
     "accessor.IngredientGridWithNavigationAccessor",
+    "accessor.IngredientGridNavigationControllerAccessor",
     "accessor.RecipeGuiLayoutsAccessor",
     "IngredientBookmarkIdentityMixin"
   ],
