@@ -3,13 +3,17 @@ package com.gali.jei_enhancements.mixin;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
 import com.gali.jei_enhancements.bookmark.IVerticalPagingAccessor;
+import mezz.jei.common.util.ImmutablePoint2i;
+import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.PageNavigation;
+import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.overlay.IIngredientGridSource;
-import mezz.jei.gui.overlay.IngredientGrid;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.gui.overlay.ingredients.IIngredientGridSource;
+import mezz.jei.gui.overlay.ingredients.IngredientGrid;
+import mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,6 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 修改IngredientGridWithNavigation的分页逻辑
@@ -36,9 +41,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
     @Shadow @Final
     private IIngredientGridSource ingredientSource;
 
-    @Shadow
-    private int firstItemIndex;
-    
     @Shadow @Final
     private PageNavigation navigation;
 
@@ -55,10 +57,20 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
     @Unique
     private int jei_enhancements$rowsPerPage = 1;
 
+    @Unique
+    private boolean jei_enhancements$managedBookmarkList = false;
+
+    @Inject(method = "updateBounds", at = @At("HEAD"))
+    private void onUpdateBoundsHead(ImmutableRect2i availableArea, Set<ImmutableRect2i> guiExclusionAreas,
+            ImmutablePoint2i mouseExclusionPoint, CallbackInfo ci) {
+        // 在 JEI 向分页代理查询页数之前，先识别数据源。
+        jei_enhancements$managedBookmarkList = ingredientSource instanceof BookmarkList;
+    }
+
     /**
      * 拦截updateLayout方法，在垂直布局模式下修正firstItemIndex和分页
      */
-    @Inject(method = "updateLayout", at = @At("HEAD"))
+    @Inject(method = "updateLayout", at = @At("HEAD"), cancellable = true)
     private void onUpdateLayoutHead(boolean resetToFirstPage, CallbackInfo ci) {
         if (!BookmarkLayoutManager.getInstance().isVerticalMode()) {
             jei_enhancements$groupRanges = null;
@@ -88,17 +100,15 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         
         if (resetToFirstPage) {
             jei_enhancements$currentGroupIndex = 0;
-            firstItemIndex = 0;
         } else {
-            // 根据firstItemIndex计算当前组索引
-            jei_enhancements$currentGroupIndex = jei_enhancements$findGroupIndexForElementIndex(firstItemIndex);
+            jei_enhancements$currentGroupIndex = Math.min(
+                    jei_enhancements$currentGroupIndex, jei_enhancements$groupRanges.size() - 1);
         }
 
-        // 确保firstItemIndex对应当前组的开始位置
-        if (jei_enhancements$groupRanges != null && !jei_enhancements$groupRanges.isEmpty() 
-                && jei_enhancements$currentGroupIndex < jei_enhancements$groupRanges.size()) {
-            firstItemIndex = jei_enhancements$groupRanges.get(jei_enhancements$currentGroupIndex)[0];
-        }
+        int firstItemIndex = jei_enhancements$groupRanges.get(jei_enhancements$currentGroupIndex)[0];
+        ingredientGrid.set(firstItemIndex, ingredientList);
+        navigation.updatePageNumber();
+        ci.cancel();
     }
     
     /**
@@ -243,6 +253,22 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
      */
     @Override
     @Unique
+    public boolean jei_enhancements$isManagedBookmarkList() {
+        return jei_enhancements$managedBookmarkList;
+    }
+
+    @Override
+    @Unique
+    public void jei_enhancements$refreshBookmarkPage() {
+        jei_enhancements$groupRanges = null;
+        jei_enhancements$lastElementCount = -1;
+        if (ingredientSource instanceof IBookmarkPageAccessor accessor) {
+            accessor.jeiEnhancements$refreshPage();
+        }
+    }
+
+    @Override
+    @Unique
     public int jei_enhancements$getPageCount() {
         if (jei_enhancements$groupRanges == null || jei_enhancements$groupRanges.isEmpty()) {
             return 1;
@@ -279,7 +305,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         }
         
         jei_enhancements$currentGroupIndex = nextGroupIndex;
-        firstItemIndex = jei_enhancements$groupRanges.get(nextGroupIndex)[0];
         return true;
     }
     
@@ -302,7 +327,6 @@ public abstract class IngredientGridWithNavigationMixin implements IVerticalPagi
         }
         
         jei_enhancements$currentGroupIndex = prevGroupIndex;
-        firstItemIndex = jei_enhancements$groupRanges.get(prevGroupIndex)[0];
         return true;
     }
     

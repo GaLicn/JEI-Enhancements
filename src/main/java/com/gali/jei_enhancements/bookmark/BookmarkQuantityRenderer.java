@@ -4,9 +4,9 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
-import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
+import mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -256,10 +256,9 @@ public class BookmarkQuantityRenderer {
             // 检查类型UID
             String typeUid = ingredient.getType().getUid();
             String typeUidLower = typeUid.toLowerCase(Locale.ROOT);
-            if (typeUidLower.contains("fluid") || typeUidLower.contains("chemical") || typeUidLower.contains("gas")
-                    || typeUidLower.contains("slurry") || typeUidLower.contains("pigment") || typeUidLower.contains("infuse")) {
-                return true;
-            }
+            return typeUidLower.contains("fluid") || typeUidLower.contains("chemical") || typeUidLower.contains("gas")
+                    || typeUidLower.contains("slurry") || typeUidLower.contains("pigment") || typeUidLower.contains(
+                    "infuse");
         }
         return false;
     }

@@ -1,20 +1,37 @@
 package com.gali.jei_enhancements.bookmark;
 
 import com.gali.jei_enhancements.JEIEnhancements;
-import com.google.gson.*;
+import com.gali.jei_enhancements.jei.JEIEnhancementsPlugin;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.ingredients.subtypes.UidContext;
+import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * - BookmarkItem: 书签项，包含groupId、itemKey、数量、类型等信息
@@ -40,9 +57,17 @@ public class BookmarkManager {
     
     // 下一个组ID
     private int nextGroupId = 1;
-    
+
+    // 逻辑书签页。页可以为空，不能从书签数量推导页数。
+    private int nextPageId = 1;
+    private int currentPageIndex = 0;
+    private final List<Integer> pageIds = new ArrayList<>(List.of(DEFAULT_GROUP_ID));
+
     // 是否允许重复添加（用于Mixin）
     private boolean allowDuplicates = false;
+
+    // 只有恢复 JEI 配置时，才允许按 itemKey 关联旧的 BookmarkItem。
+    private boolean restoringBookmarks = false;
     
     // 当前正在添加的组ID（用于关联新书签）
     private int currentAddingGroupId = DEFAULT_GROUP_ID;
@@ -67,6 +92,14 @@ public class BookmarkManager {
     public void setAllowDuplicates(boolean allow) {
         this.allowDuplicates = allow;
     }
+
+    public boolean isRestoringBookmarks() {
+        return restoringBookmarks;
+    }
+
+    public void setRestoringBookmarks(boolean restoringBookmarks) {
+        this.restoringBookmarks = restoringBookmarks;
+    }
     
     public int getCurrentAddingGroupId() {
         return currentAddingGroupId;
@@ -74,6 +107,86 @@ public class BookmarkManager {
     
     public void setCurrentAddingGroupId(int groupId) {
         this.currentAddingGroupId = groupId;
+    }
+
+    public int getCurrentPageId() {
+        ensureLoaded();
+        if (pageIds.isEmpty()) {
+            pageIds.add(DEFAULT_GROUP_ID);
+            currentPageIndex = 0;
+        }
+        currentPageIndex = Math.max(0, Math.min(currentPageIndex, pageIds.size() - 1));
+        return pageIds.get(currentPageIndex);
+    }
+
+    public int getPageCount() {
+        ensureLoaded();
+        return pageIds.size();
+    }
+
+    public int getCurrentPageIndex() {
+        ensureLoaded();
+        getCurrentPageId();
+        return currentPageIndex;
+    }
+
+    public int getFirstPageId() {
+        ensureLoaded();
+        return pageIds.get(0);
+    }
+
+    public boolean nextPage() {
+        ensureLoaded();
+        if (pageIds.size() <= 1) {
+            return false;
+        }
+        currentPageIndex = (currentPageIndex + 1) % pageIds.size();
+        markDirty();
+        return true;
+    }
+
+    public boolean previousPage() {
+        ensureLoaded();
+        if (pageIds.size() <= 1) {
+            return false;
+        }
+        currentPageIndex = (currentPageIndex - 1 + pageIds.size()) % pageIds.size();
+        markDirty();
+        return true;
+    }
+
+    /** 在当前页后插入一个新的空白页，并选中该页。 */
+    public void addPageAfterCurrent() {
+        ensureLoaded();
+        int pageId = nextPageId++;
+        int insertIndex = getCurrentPageIndex() + 1;
+        pageIds.add(insertIndex, pageId);
+        currentPageIndex = insertIndex;
+        markDirty();
+    }
+
+    /**
+     * 删除当前页。对应的 JEI 书签由调用方负责删除。
+     *
+     * @return 被删除的页 ID；当无法删除最后一页时返回 {@code -1}
+     */
+    public int removeCurrentPage() {
+        ensureLoaded();
+        if (pageIds.size() <= 1) {
+            return -1;
+        }
+        int removedPageId = pageIds.remove(currentPageIndex);
+        if (currentPageIndex >= pageIds.size()) {
+            currentPageIndex = pageIds.size() - 1;
+        }
+        markDirty();
+        return removedPageId;
+    }
+
+    public boolean isBookmarkOnCurrentPage(IBookmark bookmark) {
+        ensureLoaded();
+        BookmarkItem item = findBookmarkItem(bookmark);
+        return item == null || item.getPageId() == getCurrentPageId();
     }
     
 
@@ -97,7 +210,7 @@ public class BookmarkManager {
     /**
      * 获取所有组
      */
-    public java.util.Collection<BookmarkGroup> getAllGroups() {
+    public Collection<BookmarkGroup> getAllGroups() {
         return groups.values();
     }
     
@@ -140,6 +253,7 @@ public class BookmarkManager {
         }
         
         BookmarkItem item = new BookmarkItem(groupId, itemKey, baseQuantity, type);
+        item.setPageId(getCurrentPageId());
         item.setLinkedBookmark(jeiBookmark);
         bookmarkItems.add(item);
         
@@ -151,18 +265,41 @@ public class BookmarkManager {
         markDirty();
         return item;
     }
+
+    /** 将普通 JEI 书签注册到当前逻辑页。 */
+    public void registerPlainBookmark(IBookmark bookmark) {
+        registerPlainBookmark(bookmark, getCurrentPageId());
+    }
+
+    /** 将普通 JEI 书签注册到指定页，用于数据迁移。 */
+    public void registerPlainBookmark(IBookmark bookmark, int pageId) {
+        if (findBookmarkItem(bookmark) != null) {
+            return;
+        }
+        if (!pageIds.contains(pageId)) {
+            pageId = getFirstPageId();
+        }
+        BookmarkItem item = new BookmarkItem(DEFAULT_GROUP_ID, getItemKey(bookmark), 1,
+                BookmarkItem.BookmarkItemType.ITEM);
+        item.setPageId(pageId);
+        item.setLinkedBookmark(bookmark);
+        bookmarkItems.add(item);
+        jeiBookmarkMap.put(bookmark, item);
+        markDirty();
+    }
+
+    public void removeBookmarksFromPage(int pageId) {
+        bookmarkItems.removeIf(item -> item.getPageId() == pageId);
+        jeiBookmarkMap.entrySet().removeIf(entry -> entry.getValue().getPageId() == pageId);
+        markDirty();
+    }
     
     /**
      * 根据JEI书签查找对应的BookmarkItem（通过映射表）
      */
     public BookmarkItem findBookmarkItem(IBookmark bookmark) {
         // 首先尝试从映射表查找
-        BookmarkItem item = jeiBookmarkMap.get(bookmark);
-        if (item != null) {
-            return item;
-        }
-
-        return null;
+        return jeiBookmarkMap.get(bookmark);
     }
     
     /**
@@ -170,6 +307,9 @@ public class BookmarkManager {
      * 按顺序匹配第一个itemKey相同且未关联的BookmarkItem
      */
     public void tryLinkBookmark(IBookmark bookmark) {
+        if (!restoringBookmarks) {
+            return;
+        }
         // 确保数据已加载
         ensureLoaded();
         
@@ -422,7 +562,7 @@ public class BookmarkManager {
     
     /**
      * 重新计算组内的crafting chain
-     * 
+     * <p>
      * 核心逻辑（参考NEI的RecipeChainMath.refresh）：
      * 1. 建立INGREDIENT到RESULT的映射（preferredItems）
      * 2. 从顶层配方开始，计算每个INGREDIENT的需求量
@@ -451,7 +591,7 @@ public class BookmarkManager {
         if (results.isEmpty()) return;
         
         // 建立INGREDIENT到RESULT的映射（NEI的preferredItems）
-        java.util.Map<BookmarkItem, BookmarkItem> preferredItems = new java.util.HashMap<>();
+        Map<BookmarkItem, BookmarkItem> preferredItems = new HashMap<>();
         for (BookmarkItem result : results) {
             collectPreferredItems(result, ingredients, results, preferredItems, new HashSet<>());
         }
@@ -460,10 +600,10 @@ public class BookmarkManager {
         BookmarkItem firstResult = results.get(0);
         
         // 用于累加每个RESULT的需求量
-        java.util.Map<BookmarkItem, Long> requiredAmount = new java.util.HashMap<>();
+        Map<BookmarkItem, Long> requiredAmount = new HashMap<>();
         
         // 用于跟踪每个RESULT当前的产出量（计算过程中使用）
-        java.util.Map<BookmarkItem, Long> currentAmount = new java.util.HashMap<>();
+        Map<BookmarkItem, Long> currentAmount = new HashMap<>();
         
         // 初始化：非顶层配方的产出量为0
         for (BookmarkItem result : results) {
@@ -503,7 +643,7 @@ public class BookmarkManager {
     
     /**
      * 递归计算配方链的需求量（参考NEI的calculateSuitableRecipe）
-     * 
+     * <p>
      * 关键逻辑：
      * 1. 累加需求量到requiredAmount
      * 2. 只有当需求量超过当前产出量时，才增加合成次数（shift）
@@ -511,9 +651,9 @@ public class BookmarkManager {
      */
     private void calculateChainRequirements(BookmarkItem resultItem, long multiplier,
             List<BookmarkItem> allIngredients,
-            java.util.Map<BookmarkItem, BookmarkItem> preferredItems,
-            java.util.Map<BookmarkItem, Long> requiredAmount,
-            java.util.Map<BookmarkItem, Long> currentAmount,
+            Map<BookmarkItem, BookmarkItem> preferredItems,
+            Map<BookmarkItem, Long> requiredAmount,
+            Map<BookmarkItem, Long> currentAmount,
             Set<BookmarkItem> visited) {
         
         if (visited.contains(resultItem)) return;
@@ -557,8 +697,8 @@ public class BookmarkManager {
     /**
      * 收集INGREDIENT到RESULT的映射
      */
-    private void collectPreferredItems(BookmarkItem sourceResult, List<BookmarkItem> allIngredients, 
-            List<BookmarkItem> allResults, java.util.Map<BookmarkItem, BookmarkItem> preferredItems, 
+    private void collectPreferredItems(BookmarkItem sourceResult, List<BookmarkItem> allIngredients,
+            List<BookmarkItem> allResults, Map<BookmarkItem, BookmarkItem> preferredItems,
             Set<BookmarkItem> visited) {
         
         if (visited.contains(sourceResult)) return;
@@ -676,117 +816,26 @@ public class BookmarkManager {
      */
     public String getItemKeyFromIngredient(ITypedIngredient<?> ingredient) {
         Object obj = ingredient.getIngredient();
-        
         if (obj instanceof ItemStack stack) {
             return getItemKeyFromStack(stack);
         }
-        
-        // 对于流体和其他类型，尝试获取更稳定的标识符
-        String typeUid = ingredient.getType().getUid().toString();
-        
-        // 尝试使用反射获取流体/化学物质的注册名称
-        String stableKey = getStableKeyForObject(obj);
-        if (stableKey != null) {
-            return typeUid + ":" + stableKey;
+
+        IIngredientManager ingredientManager = JEIEnhancementsPlugin.getIngredientManager();
+        if (ingredientManager != null) {
+            @SuppressWarnings("unchecked")
+            IIngredientHelper<Object> helper = (IIngredientHelper<Object>) (IIngredientHelper<?>)
+                    ingredientManager.getIngredientHelper(ingredient.getType());
+            return ingredient.getType().getUid() + ":"
+                    + helper.getUniqueId(obj, UidContext.Ingredient);
         }
-        
-        // 回退到使用toString()，通常比hashCode()更稳定
-        return typeUid + ":" + obj.toString();
-    }
-    
-    /**
-     * 尝试获取对象的稳定key（用于流体、化学物质等）
-     */
-    private String getStableKeyForObject(Object obj) {
-        try {
-            // 尝试NeoForge FluidStack
-            if (obj.getClass().getName().contains("FluidStack")) {
-                // 尝试获取getFluid().builtInRegistryHolder().key().location()
-                java.lang.reflect.Method getFluid = obj.getClass().getMethod("getFluid");
-                Object fluid = getFluid.invoke(obj);
-                if (fluid != null) {
-                    // 尝试获取注册名称
-                    java.lang.reflect.Method builtInRegistryHolder = fluid.getClass().getMethod("builtInRegistryHolder");
-                    Object holder = builtInRegistryHolder.invoke(fluid);
-                    if (holder != null) {
-                        java.lang.reflect.Method key = holder.getClass().getMethod("key");
-                        Object resourceKey = key.invoke(holder);
-                        if (resourceKey != null) {
-                            java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
-                            Object loc = location.invoke(resourceKey);
-                            if (loc != null) {
-                                return loc.toString();
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 尝试Mekanism ChemicalStack
-            if (obj.getClass().getName().contains("ChemicalStack")) {
-                // 尝试获取getType().getRegistryName() 或 getChemical().getRegistryName()
-                java.lang.reflect.Method getChemical = null;
-                try {
-                    getChemical = obj.getClass().getMethod("getChemical");
-                } catch (NoSuchMethodException e) {
-                    try {
-                        getChemical = obj.getClass().getMethod("getType");
-                    } catch (NoSuchMethodException e2) {
-                        // ignore
-                    }
-                }
-                
-                if (getChemical != null) {
-                    Object chemical = getChemical.invoke(obj);
-                    if (chemical != null) {
-                        // 尝试获取注册名称
-                        java.lang.reflect.Method getRegistryName = null;
-                        try {
-                            getRegistryName = chemical.getClass().getMethod("getRegistryName");
-                        } catch (NoSuchMethodException e) {
-                            // 尝试其他方法
-                            try {
-                                // Mekanism 1.21+ 使用不同的API
-                                java.lang.reflect.Method builtInRegistryHolder = chemical.getClass().getMethod("builtInRegistryHolder");
-                                Object holder = builtInRegistryHolder.invoke(chemical);
-                                if (holder != null) {
-                                    java.lang.reflect.Method key = holder.getClass().getMethod("key");
-                                    Object resourceKey = key.invoke(holder);
-                                    if (resourceKey != null) {
-                                        java.lang.reflect.Method location = resourceKey.getClass().getMethod("location");
-                                        Object loc = location.invoke(resourceKey);
-                                        if (loc != null) {
-                                            return loc.toString();
-                                        }
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                // ignore
-                            }
-                        }
-                        
-                        if (getRegistryName != null) {
-                            Object regName = getRegistryName.invoke(chemical);
-                            if (regName != null) {
-                                return regName.toString();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // 反射失败，返回null使用回退方案
-            JEIEnhancements.LOGGER.debug("Failed to get stable key for object: " + obj.getClass().getName(), e);
-        }
-        
-        return null;
+        return ingredient.getType().getUid() + ":" + obj;
     }
     
     /**
      * 从ItemStack获取物品key
      */
     public String getItemKeyFromStack(ItemStack stack) {
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        ResourceLocation itemId = ForgeRegistries.ITEMS.getKey(stack.getItem());
         String key = itemId.toString();
 
         CompoundTag tag = stack.getTag();
@@ -810,6 +859,9 @@ public class BookmarkManager {
             
             JsonObject root = new JsonObject();
             root.addProperty("nextGroupId", nextGroupId);
+            root.addProperty("nextPageId", nextPageId);
+            root.addProperty("currentPageIndex", currentPageIndex);
+            root.add("pageIds", new Gson().toJsonTree(pageIds));
             
             // 保存组信息
             JsonObject groupsObj = new JsonObject();
@@ -827,6 +879,7 @@ public class BookmarkManager {
             for (BookmarkItem item : bookmarkItems) {
                 JsonObject itemObj = new JsonObject();
                 itemObj.addProperty("groupId", item.getGroupId());
+                itemObj.addProperty("pageId", item.getPageId());
                 itemObj.addProperty("itemKey", item.getItemKey());
                 itemObj.addProperty("factor", item.getFactor());
                 itemObj.addProperty("amount", item.getAmount());
@@ -860,11 +913,40 @@ public class BookmarkManager {
             bookmarkItems.clear();
             groups.clear();
             jeiBookmarkMap.clear();
+            pageIds.clear();
+            pageIds.add(DEFAULT_GROUP_ID);
+            nextPageId = 1;
+            currentPageIndex = 0;
             groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
             
             if (root.has("nextGroupId")) {
                 nextGroupId = root.get("nextGroupId").getAsInt();
             }
+
+            if (root.has("nextPageId")) {
+                nextPageId = Math.max(1, root.get("nextPageId").getAsInt());
+            }
+            if (root.has("pageIds") && root.get("pageIds").isJsonArray()) {
+                pageIds.clear();
+                for (JsonElement pageId : root.getAsJsonArray("pageIds")) {
+                    int id = pageId.getAsInt();
+                    if (!pageIds.contains(id)) {
+                        pageIds.add(id);
+                    }
+                }
+                if (pageIds.isEmpty()) {
+                    pageIds.add(DEFAULT_GROUP_ID);
+                }
+            }
+            if (!pageIds.contains(DEFAULT_GROUP_ID)) {
+                pageIds.add(0, DEFAULT_GROUP_ID);
+            }
+            if (root.has("currentPageIndex")) {
+                currentPageIndex = root.get("currentPageIndex").getAsInt();
+            }
+            currentPageIndex = Math.max(0, Math.min(currentPageIndex, pageIds.size() - 1));
+            int maxPageId = pageIds.stream().mapToInt(Integer::intValue).max().orElse(DEFAULT_GROUP_ID);
+            nextPageId = Math.max(nextPageId, maxPageId + 1);
             
             // 加载组信息
             if (root.has("groups")) {
@@ -910,6 +992,12 @@ public class BookmarkManager {
                             itemObj.get("type").getAsInt()];
                     
                     BookmarkItem item = new BookmarkItem(groupId, itemKey, factor, type);
+                    if (itemObj.has("pageId")) {
+                        item.setPageId(itemObj.get("pageId").getAsInt());
+                    }
+                    if (!pageIds.contains(item.getPageId())) {
+                        item.setPageId(DEFAULT_GROUP_ID);
+                    }
                     
                     // 加载amount
                     if (itemObj.has("amount")) {
@@ -943,7 +1031,12 @@ public class BookmarkManager {
         jeiBookmarkMap.clear();
         groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
         nextGroupId = 1;
-        loaded = false;
+        pageIds.clear();
+        pageIds.add(DEFAULT_GROUP_ID);
+        nextPageId = 1;
+        currentPageIndex = 0;
+        // 保留已清除的内存状态，否则下一次查询页时会重新加载旧文件。
+        loaded = true;
         markDirty();
     }
     

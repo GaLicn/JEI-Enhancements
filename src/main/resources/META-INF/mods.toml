@@ -66,6 +66,6 @@ side = "BOTH"
 [[dependencies."${mod_id}"]]
 modId = "jei"
 mandatory = true
-versionRange = "[15.20.0.129,)"
+versionRange = "[15.49.0.188,)"
 ordering = "NONE"
 side = "BOTH"

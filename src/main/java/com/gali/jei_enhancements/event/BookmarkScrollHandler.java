@@ -30,26 +30,6 @@ public class BookmarkScrollHandler {
         jeiRuntime = runtime;
     }
 
-    private static double jei_enhancements$getScrollDelta(ScreenEvent.MouseScrolled.Pre event) {
-        try {
-            java.lang.reflect.Method m = event.getClass().getMethod("getScrollDeltaY");
-            Object v = m.invoke(event);
-            if (v instanceof Number n) {
-                return n.doubleValue();
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            java.lang.reflect.Method m = event.getClass().getMethod("getScrollDelta");
-            Object v = m.invoke(event);
-            if (v instanceof Number n) {
-                return n.doubleValue();
-            }
-        } catch (Throwable ignored) {
-        }
-        return 0;
-    }
-
     @SubscribeEvent(priority = EventPriority.HIGH)
     public void onMouseScrolled(ScreenEvent.MouseScrolled.Pre event) {
         // 检查是否按住Ctrl键
@@ -63,7 +43,7 @@ public class BookmarkScrollHandler {
 
         double mouseX = event.getMouseX();
         double mouseY = event.getMouseY();
-        double scrollDelta = jei_enhancements$getScrollDelta(event);
+        double scrollDelta = event.getScrollDelta();
 
         IBookmarkOverlay bookmarkOverlay = jeiRuntime.getBookmarkOverlay();
         

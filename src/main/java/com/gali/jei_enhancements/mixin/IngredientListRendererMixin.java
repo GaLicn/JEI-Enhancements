@@ -1,6 +1,5 @@
 package com.gali.jei_enhancements.mixin;
 
-import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkGroup;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkLayoutManager;
@@ -8,11 +7,11 @@ import com.gali.jei_enhancements.bookmark.BookmarkManager;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.ingredients.IIngredientType;
 import mezz.jei.api.ingredients.rendering.BatchRenderElement;
-import mezz.jei.core.collect.ListMultiMap;
+import mezz.jei.common.collect.ListMultiMap;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.overlay.IngredientListRenderer;
-import mezz.jei.gui.overlay.IngredientListSlot;
 import mezz.jei.gui.overlay.elements.IElement;
+import mezz.jei.gui.overlay.ingredients.IngredientListRenderer;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;

@@ -9,9 +9,9 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.common.gui.JeiTooltip;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.overlay.IngredientGrid;
-import mezz.jei.gui.overlay.IngredientGridTooltipHelper;
 import mezz.jei.gui.overlay.elements.IElement;
+import mezz.jei.gui.overlay.ingredients.IngredientGrid;
+import mezz.jei.gui.overlay.ingredients.IngredientGridTooltipHelper;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -95,6 +96,8 @@ public abstract class IngredientGridMixin {
             tooltip.add(Component.translatable("jei_enhancements.tooltip.right_drag").withStyle(style -> style.withColor(0xAAAAAA)));
             tooltip.add(Component.translatable("jei_enhancements.tooltip.right_click_bracket").withStyle(style -> style.withColor(0xAAAAAA)));
             tooltip.add(Component.translatable("jei_enhancements.tooltip.click_page").withStyle(style -> style.withColor(0xAAAAAA)));
+            tooltip.add(Component.translatable("jei_enhancements.tooltip.add_bookmark_page").withStyle(style -> style.withColor(0xAAAAAA)));
+            tooltip.add(Component.translatable("jei_enhancements.tooltip.remove_bookmark_page").withStyle(style -> style.withColor(0xAAAAAA)));
         } else if (bookmarkOpt.isPresent()) {
             // 只有书签才显示Alt提示
             tooltip.add(Component.empty());
@@ -156,29 +159,22 @@ public abstract class IngredientGridMixin {
         return null;
     }
 
+    @Unique
     private <T> String jei_enhancements$formatAmountForTooltip(ITypedIngredient<T> typedIngredient, long amount) {
         String suffix = typedIngredient.getItemStack().isPresent() ? "" : "L";
         return String.format("%,d%s", amount, suffix);
     }
 
+    @Unique
     private <T> int jei_enhancements$getBaseQuantity(ITypedIngredient<T> typedIngredient) {
         Optional<ItemStack> itemStackOpt = typedIngredient.getItemStack();
         if (itemStackOpt.isPresent()) {
             return Math.max(1, itemStackOpt.get().getCount());
         }
-        Object obj = typedIngredient.getIngredient();
-        try {
-            java.lang.reflect.Method getAmount;
-            try {
-                getAmount = obj.getClass().getMethod("getAmount");
-            } catch (NoSuchMethodException e) {
-                getAmount = obj.getClass().getMethod("amount");
-            }
-            Object result = getAmount.invoke(obj);
-            if (result instanceof Number num) {
-                return Math.max(1, num.intValue());
-            }
-        } catch (Exception ignored) {
+        IIngredientHelper<T> ingredientHelper = ingredientManager.getIngredientHelper(typedIngredient.getType());
+        long amount = ingredientHelper.getAmount(typedIngredient.getIngredient());
+        if (amount > 0) {
+            return (int) Math.min(Integer.MAX_VALUE, amount);
         }
         return 1;
     }

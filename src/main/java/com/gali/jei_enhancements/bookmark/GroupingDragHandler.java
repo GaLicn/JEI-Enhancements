@@ -1,13 +1,19 @@
 package com.gali.jei_enhancements.bookmark;
 
-import mezz.jei.gui.overlay.IngredientListSlot;
+import mezz.jei.gui.overlay.ingredients.IngredientListSlot;
 import net.minecraft.client.gui.GuiGraphics;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 处理组合并的拖动操作（NEI风格）
- * 
+ * <p>
  * NEI的组逻辑：
  * - 左键拖动：将多行连接成一个组（改变groupId，不是真正合并）
  * - 右键拖动：将行从组中排除

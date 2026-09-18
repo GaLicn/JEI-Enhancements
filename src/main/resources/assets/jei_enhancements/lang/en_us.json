@@ -15,5 +15,7 @@
   "jei_enhancements.tooltip.group_panel_left_drag": "Left-drag: Connect rows into a group",
   "jei_enhancements.tooltip.group_panel_right_drag": "Right-drag: Exclude rows from group",
   "jei_enhancements.tooltip.group_panel_right_click": "Right-click: Toggle crafting chain mode ([ turns green)",
-  "jei_enhancements.tooltip.alt_click_group": "Alt + Click: Expand/collapse bookmark group"
+  "jei_enhancements.tooltip.alt_click_group": "Alt + Click: Expand/collapse bookmark group",
+  "jei_enhancements.tooltip.add_bookmark_page": "+: Add an empty bookmark page after the current page",
+  "jei_enhancements.tooltip.remove_bookmark_page": "-: Delete the current bookmark page and its bookmarks"
 }

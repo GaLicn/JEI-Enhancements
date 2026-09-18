@@ -3,12 +3,20 @@ package com.gali.jei_enhancements.mixin;
 import com.gali.jei_enhancements.JEIEnhancements;
 import com.gali.jei_enhancements.bookmark.BookmarkItem;
 import com.gali.jei_enhancements.bookmark.BookmarkManager;
+import com.gali.jei_enhancements.bookmark.IBookmarkPageAccessor;
+import mezz.jei.api.helpers.IGuiHelper;
+import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.ITypedIngredient;
+import mezz.jei.api.recipe.IFocusFactory;
+import mezz.jei.api.recipe.IRecipeManager;
 import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
-import mezz.jei.gui.overlay.IIngredientGridSource.SourceListChangedListener;
+import mezz.jei.gui.config.IBookmarkConfig;
+import mezz.jei.gui.overlay.ingredients.IIngredientGridSource.SourceListChangedListener;
+import mezz.jei.gui.overlay.elements.IElement;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,7 +38,7 @@ import java.util.Set;
  * 修改JEI的BookmarkList，允许同一物品多次添加到书签
  */
 @Mixin(value = BookmarkList.class, remap = false)
-public class BookmarkListMixin {
+public class BookmarkListMixin implements IBookmarkPageAccessor {
     
     @Shadow @Final
     private Set<IBookmark> bookmarksSet;
@@ -43,6 +51,21 @@ public class BookmarkListMixin {
 
     @Shadow @Final
     private IIngredientManager ingredientManager;
+
+    @Shadow @Final
+    private IRecipeManager recipeManager;
+
+    @Shadow @Final
+    private IFocusFactory focusFactory;
+
+    @Shadow @Final
+    private RegistryAccess registryAccess;
+
+    @Shadow @Final
+    private IBookmarkConfig bookmarkConfig;
+
+    @Shadow @Final
+    private IGuiHelper guiHelper;
 
     @Unique
     private boolean jei_enhancements$restoredFromConfig = false;
@@ -64,17 +87,68 @@ public class BookmarkListMixin {
      * 当JEI加载书签时，尝试与BookmarkItem建立映射
      */
     @Inject(method = "add", at = @At("HEAD"))
-    private void onAdd(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
+    private void onAdd(IBookmark value, CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
-        // 尝试将新添加的JEI书签与已保存的BookmarkItem关联
-        manager.tryLinkBookmark(bookmark);
-
-        if (manager.findBookmarkItem(bookmark) == null) {
-            String itemKey = manager.getItemKey(bookmark);
-            int baseQuantity = jei_enhancements$getBookmarkBaseQuantity(bookmark);
-            manager.addBookmarkItem(BookmarkManager.DEFAULT_GROUP_ID, itemKey, baseQuantity, BookmarkItem.BookmarkItemType.ITEM, bookmark);
-            manager.save();
+        if (manager.isAllowDuplicates()) {
+            // RecipeBookmarkHelper 会在 add() 后自行注册配方中的类型化成员。
+            // 防止第一次通知将尚未完成的配方当作普通列表处理。
+            jei_enhancements$restoredFromConfig = true;
         }
+        // 只有恢复JEI配置时，才允许按itemKey关联已保存的BookmarkItem。
+        if (manager.isRestoringBookmarks()) {
+            manager.tryLinkBookmark(value);
+        }
+    }
+
+    @Inject(method = "getElements", at = @At("HEAD"), cancellable = true)
+    private void onGetElements(CallbackInfoReturnable<List<IElement<?>>> cir) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        cir.setReturnValue(bookmarksList.stream()
+                .filter(manager::isBookmarkOnCurrentPage)
+                .<IElement<?>>map(IBookmark::getElement)
+                .toList());
+    }
+
+    @Inject(method = "add", at = @At("RETURN"))
+    private void onAddReturn(IBookmark value, CallbackInfoReturnable<Boolean> cir) {
+        if (!cir.getReturnValueZ()) {
+            return;
+        }
+
+        BookmarkManager manager = BookmarkManager.getInstance();
+        if (!manager.isAllowDuplicates() && manager.findBookmarkItem(value) == null) {
+            manager.setRestoringBookmarks(false);
+            jei_enhancements$restoredFromConfig = true;
+            manager.registerPlainBookmark(value);
+            manager.save();
+            jei_enhancements$notifyListeners();
+        }
+    }
+
+    @Override
+    @Unique
+    public void jeiEnhancements$clearPage(int pageId) {
+        BookmarkManager manager = BookmarkManager.getInstance();
+        List<IBookmark> pageBookmarks = bookmarksList.stream()
+                .filter(bookmark -> {
+                    BookmarkItem item = manager.findBookmarkItem(bookmark);
+                    return item != null && item.getPageId() == pageId;
+                })
+                .toList();
+
+        for (IBookmark bookmark : pageBookmarks) {
+            jei_enhancements$removeBookmarkByIdentity(bookmark);
+            manager.onBookmarkRemoved(bookmark);
+        }
+        manager.removeBookmarksFromPage(pageId);
+        bookmarkConfig.saveBookmarks(recipeManager, focusFactory, guiHelper, ingredientManager, registryAccess, bookmarksList);
+        jei_enhancements$notifyListeners();
+    }
+
+    @Override
+    @Unique
+    public void jeiEnhancements$refreshPage() {
+        jei_enhancements$notifyListeners();
     }
     
     /**
@@ -177,25 +251,19 @@ public class BookmarkListMixin {
     }
 
     @Unique
-    private static int jei_enhancements$getBookmarkBaseQuantity(IBookmark bookmark) {
+    private int jei_enhancements$getBookmarkBaseQuantity(IBookmark bookmark) {
         if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
             ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
-            Object obj = ingredient.getIngredient();
-            if (obj instanceof ItemStack stack) {
+            if (ingredient.getIngredient() instanceof ItemStack stack) {
                 return Math.max(1, stack.getCount());
             }
-            try {
-                java.lang.reflect.Method getAmount;
-                try {
-                    getAmount = obj.getClass().getMethod("getAmount");
-                } catch (NoSuchMethodException e) {
-                    getAmount = obj.getClass().getMethod("amount");
-                }
-                Object result = getAmount.invoke(obj);
-                if (result instanceof Number num) {
-                    return Math.max(1, num.intValue());
-                }
-            } catch (Exception ignored) {
+            @SuppressWarnings("unchecked")
+            IIngredientHelper<Object> helper =
+                    (IIngredientHelper<Object>) (IIngredientHelper<?>)
+                            ingredientManager.getIngredientHelper(ingredient.getType());
+            long amount = helper.getAmount(ingredient.getIngredient());
+            if (amount > 0) {
+                return (int) Math.min(Integer.MAX_VALUE, amount);
             }
         }
         return 1;
@@ -216,6 +284,12 @@ public class BookmarkListMixin {
 
         // 如果没有已保存的数据，则用当前 JEI 书签列表初始化（兼容旧存档/手动添加的书签）
         List<BookmarkItem> allItems = manager.getAllItems();
+        if (!allItems.isEmpty()) {
+            jei_enhancements$restoredFromConfig = true;
+            jei_enhancements$restoreManagedBookmarks(manager, allItems);
+            return;
+        }
+
         if (allItems.isEmpty()) {
             manager.clearMappings();
             for (IBookmark bookmark : bookmarksList) {
@@ -276,6 +350,61 @@ public class BookmarkListMixin {
      * 使同一物品可以有多个独立的书签实例
      */
     @Unique
+    private void jei_enhancements$restoreManagedBookmarks(BookmarkManager manager, List<BookmarkItem> allItems) {
+        manager.setRestoringBookmarks(true);
+        try {
+            Map<String, List<IBookmark>> available = new HashMap<>();
+            Map<String, IngredientBookmark<?>> templates = new HashMap<>();
+            for (IBookmark bookmark : bookmarksList) {
+                String itemKey = manager.getItemKey(bookmark);
+                available.computeIfAbsent(itemKey, key -> new ArrayList<>()).add(bookmark);
+                if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
+                    templates.putIfAbsent(itemKey, ingredientBookmark);
+                }
+            }
+
+            manager.clearMappings();
+            bookmarksList.clear();
+            bookmarksSet.clear();
+
+            for (BookmarkItem item : allItems) {
+                List<IBookmark> candidates = available.get(item.getItemKey());
+                IBookmark bookmark = candidates == null || candidates.isEmpty() ? null : candidates.remove(0);
+                if (bookmark == null) {
+                    IngredientBookmark<?> template = templates.get(item.getItemKey());
+                    if (template != null) {
+                        bookmark = jei_enhancements$cloneBookmark(template);
+                    }
+                }
+
+                if (bookmark == null) {
+                    JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
+                    continue;
+                }
+
+                bookmarksList.add(bookmark);
+                bookmarksSet.add(bookmark);
+                item.setLinkedBookmark(bookmark);
+                manager.linkBookmark(bookmark, item);
+            }
+
+            // 将模组存档中不存在的普通 JEI 书签保留在第一页。
+            int firstPageId = manager.getFirstPageId();
+            for (List<IBookmark> remaining : available.values()) {
+                for (IBookmark bookmark : remaining) {
+                    bookmarksList.add(bookmark);
+                    bookmarksSet.add(bookmark);
+                    manager.registerPlainBookmark(bookmark, firstPageId);
+                }
+            }
+
+            manager.save();
+        } finally {
+            manager.setRestoringBookmarks(false);
+        }
+    }
+
+    @Unique
     private IBookmark jei_enhancements$cloneBookmark(IBookmark original) {
         try {
             if (original instanceof IngredientBookmark<?> ingredientBookmark) {
@@ -293,11 +422,11 @@ public class BookmarkListMixin {
      * 完全接管remove逻辑，使用对象引用（identity）来删除特定实例。
      */
     @Inject(method = "remove", at = @At("HEAD"), cancellable = true)
-    private void onRemove(IBookmark bookmark, CallbackInfoReturnable<Boolean> cir) {
+    private void onRemove(IBookmark ingredient, CallbackInfoReturnable<Boolean> cir) {
         BookmarkManager manager = BookmarkManager.getInstance();
         
         // 检查这个书签是否在管理器中
-        BookmarkItem item = manager.findBookmarkItem(bookmark);
+        BookmarkItem item = manager.findBookmarkItem(ingredient);
         
         if (item != null) {
             boolean removed = false;
@@ -308,9 +437,9 @@ public class BookmarkListMixin {
                 removed = jei_enhancements$removeRecipe(manager, item);
             } else {
                 // 只删除这个单独的书签
-                removed = jei_enhancements$removeBookmarkByIdentity(bookmark);
+                removed = jei_enhancements$removeBookmarkByIdentity(ingredient);
                 // 通知BookmarkManager删除单个书签
-                manager.onBookmarkRemoved(bookmark);
+                manager.onBookmarkRemoved(ingredient);
             }
             
             // 通知监听器刷新UI
@@ -322,7 +451,7 @@ public class BookmarkListMixin {
             cir.setReturnValue(removed);
         } else {
             // 通知manager（以防万一）
-            manager.onBookmarkRemoved(bookmark);
+            manager.onBookmarkRemoved(ingredient);
         }
     }
     
