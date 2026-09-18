@@ -331,6 +331,12 @@ public class GroupingDragHandler {
             }
         }
         
+        // 合并后如果目标组开启了crafting chain，重新计算配方链数量关系
+        BookmarkGroup targetGroup = manager.getGroup(targetGroupId);
+        if (targetGroup != null && targetGroup.isCraftingChainEnabled()) {
+            manager.recalculateCraftingChainInGroup(targetGroupId);
+        }
+        
         manager.save();
     }
     

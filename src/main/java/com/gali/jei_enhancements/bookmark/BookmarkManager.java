@@ -18,7 +18,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -333,14 +335,25 @@ public class BookmarkManager {
     
     // 标记是否已加载
     private boolean loaded = false;
+
+    // 当前数据所属的存档标识，用于检测切换存档
+    private String lastWorldId = null;
     
     /**
      * 确保数据已加载（懒加载）- 公开方法供mixin调用
+     * 若检测到存档切换，则重新加载对应存档的数据
      */
     public void ensureLoaded() {
+        String worldId = getCurrentWorldId();
         if (!loaded) {
             load();
             loaded = true;
+        } else if (!java.util.Objects.equals(worldId, lastWorldId)) {
+            // 存档发生变化：先把旧存档数据写盘，再加载新存档数据
+            if (dirty) {
+                save();
+            }
+            load();
         }
     }
     
@@ -561,6 +574,32 @@ public class BookmarkManager {
     }
     
     /**
+     * 找到配方链的顶层配方（最终产物）
+     * <p>
+     * 顶层配方 = 其产出没有被任何其他配方当作原料消耗的RESULT。
+     * 例如：1原木→4木板、3木板→6台阶，顶层应为台阶（木板被台阶配方消耗）。
+     * 如果存在多个候选，返回列表中最后一个（通常是最后保存的最终产物）。
+     */
+    private BookmarkItem findTopLevelResult(List<BookmarkItem> results, List<BookmarkItem> ingredients) {
+        // 收集所有被作为原料消耗的itemKey
+        Set<String> consumedKeys = new HashSet<>();
+        for (BookmarkItem ingr : ingredients) {
+            consumedKeys.add(ingr.getItemKey());
+        }
+        
+        // 找产出不被消耗的RESULT
+        BookmarkItem candidate = null;
+        for (BookmarkItem result : results) {
+            if (!consumedKeys.contains(result.getItemKey())) {
+                candidate = result;
+            }
+        }
+        
+        // 如果没有找到（循环链或全部被消耗），回退到第一个RESULT
+        return candidate != null ? candidate : results.get(0);
+    }
+    
+    /**
      * 重新计算组内的crafting chain
      * <p>
      * 核心逻辑（参考NEI的RecipeChainMath.refresh）：
@@ -596,8 +635,9 @@ public class BookmarkManager {
             collectPreferredItems(result, ingredients, results, preferredItems, new HashSet<>());
         }
         
-        // 找到顶层配方（第一个RESULT）
-        BookmarkItem firstResult = results.get(0);
+        // 找到顶层配方：其产出不被任何其他配方作为原料消耗的RESULT
+        // （即配方链的最终产物，从它开始向下游计算）
+        BookmarkItem firstResult = findTopLevelResult(results, ingredients);
         
         // 用于累加每个RESULT的需求量
         Map<BookmarkItem, Long> requiredAmount = new HashMap<>();
@@ -900,8 +940,20 @@ public class BookmarkManager {
     
     public void load() {
         try {
+            lastWorldId = getCurrentWorldId();
             Path savePath = getSaveFilePath();
             if (!Files.exists(savePath)) {
+                // 该存档还没有数据，清空内存以免沿用上一个存档的数据
+                bookmarkItems.clear();
+                groups.clear();
+                jeiBookmarkMap.clear();
+                pageIds.clear();
+                pageIds.add(DEFAULT_GROUP_ID);
+                nextGroupId = 1;
+                nextPageId = 1;
+                currentPageIndex = 0;
+                groups.put(DEFAULT_GROUP_ID, new BookmarkGroup(DEFAULT_GROUP_ID));
+                dirty = false;
                 loaded = true;
                 return;
             }
@@ -1017,9 +1069,31 @@ public class BookmarkManager {
         }
     }
     
+    /**
+     * 获取当前存档的标识（存档文件夹名）。
+     * 单人游戏返回存档目录名；无存档或多人游戏返回 null。
+     */
+    @Nullable
+    private String getCurrentWorldId() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
+            return mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT)
+                    .toAbsolutePath().normalize().toString();
+        }
+        return null;
+    }
+
     private Path getSaveFilePath() {
         Minecraft mc = Minecraft.getInstance();
-        return mc.gameDirectory.toPath().resolve("config").resolve(SAVE_FILE_NAME);
+        Path configDir = mc.gameDirectory.toPath().resolve("config");
+        String worldId = getCurrentWorldId();
+        if (worldId == null) {
+            // 未进入存档（主菜单、多人游戏）时使用全局文件
+            return configDir.resolve(SAVE_FILE_NAME);
+        }
+        // 以存档路径的哈希作为文件名，保证每个存档独立
+        String worldHash = Integer.toHexString(worldId.hashCode());
+        return configDir.resolve("jei_enhancements_bookmarks_" + worldHash + ".json");
     }
     
     /**
