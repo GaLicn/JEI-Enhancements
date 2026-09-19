@@ -288,85 +288,43 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             return;
         }
 
-        // 如果没有已保存的数据，则用当前 JEI 书签列表初始化（兼容旧存档/手动添加的书签）
         List<BookmarkItem> allItems = manager.getAllItems();
+
+        // 有已保存数据：按存档条目重建 JEI 书签列表
         if (!allItems.isEmpty()) {
             jei_enhancements$restoredFromConfig = true;
             jei_enhancements$restoreManagedBookmarks(manager, allItems);
             return;
         }
 
-        if (allItems.isEmpty()) {
-            manager.clearMappings();
-            for (IBookmark bookmark : bookmarksList) {
-                if (manager.findBookmarkItem(bookmark) != null) {
-                    continue;
-                }
-                String itemKey = manager.getItemKey(bookmark);
-                int baseQuantity = jei_enhancements$getBookmarkBaseQuantity(bookmark);
-                manager.addBookmarkItem(BookmarkManager.DEFAULT_GROUP_ID, itemKey, baseQuantity, BookmarkItem.BookmarkItemType.ITEM, bookmark);
-            }
-            manager.save();
-            jei_enhancements$restoredFromConfig = true;
-            return;
-        }
-
-        // 只有当有已保存数据且当前书签列表非空时，才视为“刚从配置加载完成”
-        if (bookmarksList.isEmpty()) {
-            return;
-        }
-
-        jei_enhancements$restoredFromConfig = true;
-
-        // 建立itemKey到JEI书签的映射（用于复制创建重复书签）
-        Map<String, IBookmark> itemKeyToBookmark = new HashMap<>();
-        for (IBookmark bookmark : bookmarksList) {
-            String itemKey = manager.getItemKey(bookmark);
-            itemKeyToBookmark.put(itemKey, bookmark);
-        }
-
-        // 清空当前映射，重新建立
+        // 没有已保存数据：用当前 JEI 书签列表初始化（兼容旧存档/手动添加的书签）
         manager.clearMappings();
-
-        // 清空JEI的书签列表，重新按顺序添加
-        bookmarksList.clear();
-        bookmarksSet.clear();
-
-        // 按BookmarkItem的顺序重新添加书签
-        // 对于重复的物品，需要创建新的书签实例
-        for (BookmarkItem item : allItems) {
-            IBookmark templateBookmark = itemKeyToBookmark.get(item.getItemKey());
-            if (templateBookmark != null) {
-                IBookmark newBookmark = jei_enhancements$cloneBookmark(templateBookmark);
-                if (newBookmark != null) {
-                    bookmarksList.add(newBookmark);
-                    bookmarksSet.add(newBookmark);
-
-                    item.setLinkedBookmark(newBookmark);
-                    manager.linkBookmark(newBookmark, item);
-                }
-            } else {
-                JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
+        for (IBookmark bookmark : bookmarksList) {
+            if (manager.findBookmarkItem(bookmark) != null) {
+                continue;
             }
+            String itemKey = manager.getItemKey(bookmark);
+            int baseQuantity = jei_enhancements$getBookmarkBaseQuantity(bookmark);
+            manager.addBookmarkItem(BookmarkManager.DEFAULT_GROUP_ID, itemKey, baseQuantity, BookmarkItem.BookmarkItemType.ITEM, bookmark);
         }
+        manager.save();
+        jei_enhancements$restoredFromConfig = true;
     }
     
     /**
-     * 克隆一个书签，创建新的实例
-     * 使同一物品可以有多个独立的书签实例
+     * 按存档中的书签条目重建 JEI 书签列表。
+     * <p>
+     * 候选书签按 itemKey 分桶后逐个取用；取不到时跳过而不克隆，
+     * 因为克隆出的实例与原实例 equals 相等，会破坏 bookmarksSet 与 bookmarksList 的一致性。
      */
     @Unique
     private void jei_enhancements$restoreManagedBookmarks(BookmarkManager manager, List<BookmarkItem> allItems) {
         manager.setRestoringBookmarks(true);
         try {
             Map<String, List<IBookmark>> available = new HashMap<>();
-            Map<String, IngredientBookmark<?>> templates = new HashMap<>();
             for (IBookmark bookmark : bookmarksList) {
                 String itemKey = manager.getItemKey(bookmark);
                 available.computeIfAbsent(itemKey, key -> new ArrayList<>()).add(bookmark);
-                if (bookmark instanceof IngredientBookmark<?> ingredientBookmark) {
-                    templates.putIfAbsent(itemKey, ingredientBookmark);
-                }
             }
 
             manager.clearMappings();
@@ -375,18 +333,14 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
 
             for (BookmarkItem item : allItems) {
                 List<IBookmark> candidates = available.get(item.getItemKey());
-                IBookmark bookmark = candidates == null || candidates.isEmpty() ? null : candidates.remove(0);
-                if (bookmark == null) {
-                    IngredientBookmark<?> template = templates.get(item.getItemKey());
-                    if (template != null) {
-                        bookmark = jei_enhancements$cloneBookmark(template);
-                    }
-                }
-
-                if (bookmark == null) {
+                if (candidates == null || candidates.isEmpty()) {
+                    // 存档条目数多于 JEI 实际书签数，属数据不一致。
+                    // 此处不能凭空克隆书签：克隆实例与模板 equals 相等，bookmarksSet 不会增长，
+                    // 但 bookmarksList 会多出一个，最终同一物品在同一页重复渲染。
                     JEIEnhancements.LOGGER.warn("Could not find JEI bookmark for item: {}", item.getItemKey());
                     continue;
                 }
+                IBookmark bookmark = candidates.remove(0);
 
                 bookmarksList.add(bookmark);
                 bookmarksSet.add(bookmark);
@@ -410,19 +364,6 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
         }
     }
 
-    @Unique
-    private IBookmark jei_enhancements$cloneBookmark(IBookmark original) {
-        try {
-            if (original instanceof IngredientBookmark<?> ingredientBookmark) {
-                ITypedIngredient<?> ingredient = ingredientBookmark.getIngredient();
-                return IngredientBookmark.create(ingredient, ingredientManager);
-            }
-        } catch (Exception e) {
-            JEIEnhancements.LOGGER.error("Failed to clone bookmark", e);
-        }
-        return original;
-    }
-    
     /**
      * 拦截remove方法
      * 完全接管remove逻辑，使用对象引用（identity）来删除特定实例。
@@ -456,8 +397,14 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             // 取消原始方法，返回是否成功删除
             cir.setReturnValue(removed);
         } else {
-            // 通知manager（以防万一）
-            manager.onBookmarkRemoved(ingredient);
+            // 未建立映射的书签虽不由管理器管理，但仍必须按对象引用删除。
+            // 交回 JEI 原生 remove 会先用 equals 查 bookmarksSet，再删除 bookmarksList 中
+            // 第一个相等元素；当列表存在相等实例时，删掉的可能与目标不是同一个，导致目标残留。
+            boolean removed = jei_enhancements$removeBookmarkByIdentity(ingredient);
+            if (removed) {
+                jei_enhancements$notifyListeners();
+            }
+            cir.setReturnValue(removed);
         }
     }
     

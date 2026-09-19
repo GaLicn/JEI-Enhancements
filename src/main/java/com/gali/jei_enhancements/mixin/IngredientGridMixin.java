@@ -63,12 +63,10 @@ public abstract class IngredientGridMixin {
             manager.ensureLoaded();
             manager.tryLinkBookmark(bookmark);
             BookmarkItem item = manager.findBookmarkItem(bookmark);
-            if (item == null) {
-                String itemKey = manager.getItemKeyFromIngredient(typedIngredient);
-                int baseQuantity = jei_enhancements$getBaseQuantity(typedIngredient);
-                item = manager.addBookmarkItem(BookmarkManager.DEFAULT_GROUP_ID, itemKey, baseQuantity, BookmarkItem.BookmarkItemType.ITEM, bookmark);
-            }
-            
+            // 这里是每帧执行的 tooltip 绘制路径，必须保持只读：
+            // 之前在此调用 addBookmarkItem 会在渲染期间往 bookmarkItems 里塞入多余条目，
+            // 当场不落盘，但会被之后任意一次 save() 写进存档，重进时按这些条目重建就成了重复书签。
+            // 未建立映射时直接跳过数量显示即可。
             if (item != null) {
                 long amount = Math.max(1, item.getAmount());
                 String amountText = jei_enhancements$formatAmountForTooltip(typedIngredient, amount);
@@ -165,17 +163,4 @@ public abstract class IngredientGridMixin {
         return String.format("%,d%s", amount, suffix);
     }
 
-    @Unique
-    private <T> int jei_enhancements$getBaseQuantity(ITypedIngredient<T> typedIngredient) {
-        Optional<ItemStack> itemStackOpt = typedIngredient.getItemStack();
-        if (itemStackOpt.isPresent()) {
-            return Math.max(1, itemStackOpt.get().getCount());
-        }
-        IIngredientHelper<T> ingredientHelper = ingredientManager.getIngredientHelper(typedIngredient.getType());
-        long amount = ingredientHelper.getAmount(typedIngredient.getIngredient());
-        if (amount > 0) {
-            return (int) Math.min(Integer.MAX_VALUE, amount);
-        }
-        return 1;
-    }
 }

@@ -15,6 +15,7 @@ import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.IngredientBookmark;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -188,7 +189,10 @@ public class BookmarkManager {
     public boolean isBookmarkOnCurrentPage(IBookmark bookmark) {
         ensureLoaded();
         BookmarkItem item = findBookmarkItem(bookmark);
-        return item == null || item.getPageId() == getCurrentPageId();
+        // 未建立映射的书签无法确定所属页，若按可见处理会在每一页重复出现；
+        // 正常路径（新增、恢复、迁移）加入 bookmarksList 时都会建立映射，
+        // 因此这里的 null 只代表数据不一致，应当隐藏而不是全页显示。
+        return item != null && item.getPageId() == getCurrentPageId();
     }
     
 
@@ -1101,8 +1105,13 @@ public class BookmarkManager {
     }
     
     /**
-     * 获取当前存档的标识（存档文件夹名）。
-     * 单人游戏返回存档目录名；无存档或多人游戏返回 null。
+     * 获取当前存档的标识。
+     * <p>
+     * 单人游戏返回存档目录路径；联机返回服务器地址。
+     * 只有主菜单等既无单人存档、也无联机服务器的场合才返回 null。
+     * <p>
+     * 联机必须单独标识，否则不同服务器的书签会写入同一个全局文件，
+     * 重进时按这些条目重建 JEI 书签列表就会出现重复与串档。
      */
     @Nullable
     private String getCurrentWorldId() {
@@ -1110,6 +1119,11 @@ public class BookmarkManager {
         if (mc.hasSingleplayerServer() && mc.getSingleplayerServer() != null) {
             return mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT)
                     .toAbsolutePath().normalize().toString();
+        }
+        // 联机：以服务器地址作为标识，保证每个服务器独立
+        ServerData server = mc.getCurrentServer();
+        if (server != null) {
+            return "server:" + server.ip;
         }
         return null;
     }
@@ -1119,10 +1133,10 @@ public class BookmarkManager {
         Path configDir = mc.gameDirectory.toPath().resolve("config");
         String worldId = getCurrentWorldId();
         if (worldId == null) {
-            // 未进入存档（主菜单、多人游戏）时使用全局文件
+            // 未进入存档（主菜单）时使用全局文件
             return configDir.resolve(SAVE_FILE_NAME);
         }
-        // 以存档路径的哈希作为文件名，保证每个存档独立
+        // 以存档标识的哈希作为文件名，保证每个存档/服务器独立
         String worldHash = Integer.toHexString(worldId.hashCode());
         return configDir.resolve("jei_enhancements_bookmarks_" + worldHash + ".json");
     }
