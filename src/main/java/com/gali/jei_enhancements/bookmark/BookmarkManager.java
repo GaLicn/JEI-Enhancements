@@ -295,6 +295,37 @@ public class BookmarkManager {
         jeiBookmarkMap.entrySet().removeIf(entry -> entry.getValue().getPageId() == pageId);
         markDirty();
     }
+
+    /**
+     * 按 JEI 书签列表的当前顺序重排内部书签项。
+     * <p>
+     * 拖拽排序只会改写 JEI 的 bookmarksList，而进入存档时的顺序由 bookmarkItems 决定，
+     * 因此必须把同一个顺序写回 bookmarkItems，否则重进存档会按旧顺序重建，拖拽结果丢失。
+     * 未被 JEI 列表覆盖的书签项保持原有相对顺序并追加在末尾，避免误删数据。
+     *
+     * @param orderedBookmarks 按目标顺序排列的 JEI 书签
+     */
+    public void reorderItemsByBookmarks(List<IBookmark> orderedBookmarks) {
+        List<BookmarkItem> reordered = new ArrayList<>(bookmarkItems.size());
+        for (IBookmark bookmark : orderedBookmarks) {
+            BookmarkItem item = jeiBookmarkMap.get(bookmark);
+            // BookmarkItem 未重写 equals，contains 即按对象引用判断
+            if (item != null && !reordered.contains(item)) {
+                reordered.add(item);
+            }
+        }
+        for (BookmarkItem item : bookmarkItems) {
+            if (!reordered.contains(item)) {
+                reordered.add(item);
+            }
+        }
+
+        if (reordered.size() != bookmarkItems.size() || !reordered.equals(bookmarkItems)) {
+            bookmarkItems.clear();
+            bookmarkItems.addAll(reordered);
+            markDirty();
+        }
+    }
     
     /**
      * 根据JEI书签查找对应的BookmarkItem（通过映射表）

@@ -213,10 +213,16 @@ public class BookmarkListMixin implements IBookmarkPageAccessor {
             // 执行移动（使用对象引用）
             jei_enhancements$removeByIdentity(newBookmark);
             bookmarksList.add(newIndex, newBookmark);
-            
+
+            // 把新的顺序写回管理器。否则重进存档时会按旧的 bookmarkItems 顺序重建，拖拽结果丢失。
+            manager.reorderItemsByBookmarks(bookmarksList);
+
             // 通知监听器刷新UI
             jei_enhancements$notifyListeners();
-            
+
+            // 立即落盘（原版 moveBookmark 同样会在移动后保存书签配置）
+            manager.save();
+
             // 取消原始方法
             ci.cancel();
         }
