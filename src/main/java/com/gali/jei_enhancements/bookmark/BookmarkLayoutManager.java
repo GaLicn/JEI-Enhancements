@@ -26,6 +26,8 @@ public class BookmarkLayoutManager {
     }
     
     private LayoutMode currentMode = LayoutMode.HORIZONTAL;
+    // 控制书签右下角数量是否显示。
+    private boolean renderQuantities = true;
     private boolean dirty = false;
     
     public static BookmarkLayoutManager getInstance() {
@@ -55,6 +57,21 @@ public class BookmarkLayoutManager {
     }
     
     /**
+     * 是否渲染书签右下角数量。
+     */
+    public boolean isRenderQuantities() {
+        return renderQuantities;
+    }
+
+    /**
+     * 切换书签右下角数量显示。
+     */
+    public void toggleRenderQuantities() {
+        renderQuantities = !renderQuantities;
+        dirty = true;
+    }
+
+    /**
      * 是否是纵向模式
      */
     public boolean isVerticalMode() {
@@ -78,6 +95,7 @@ public class BookmarkLayoutManager {
             
             JsonObject root = new JsonObject();
             root.addProperty("layoutMode", currentMode.name());
+            root.addProperty("renderQuantities", renderQuantities);
             
             Files.writeString(savePath, root.toString(), StandardCharsets.UTF_8);
             dirty = false;
@@ -97,6 +115,10 @@ public class BookmarkLayoutManager {
             String json = Files.readString(savePath, StandardCharsets.UTF_8);
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
             
+            if (root.has("renderQuantities")) {
+                renderQuantities = root.get("renderQuantities").getAsBoolean();
+            }
+
             if (root.has("layoutMode")) {
                 String modeName = root.get("layoutMode").getAsString();
                 try {

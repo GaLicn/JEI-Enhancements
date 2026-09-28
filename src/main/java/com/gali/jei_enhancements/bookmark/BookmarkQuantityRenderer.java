@@ -192,6 +192,11 @@ public class BookmarkQuantityRenderer {
             }
         }
         
+        // 右键页码标签栏可关闭右下角数量，但保留分组指示器。
+        if (!BookmarkLayoutManager.getInstance().isRenderQuantities()) {
+            return;
+        }
+
         // 获取计算后的数量
         int quantity = manager.getQuantity(item);
         if (quantity <= 0) {

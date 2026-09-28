@@ -76,6 +76,16 @@ public class BookmarkLayoutClickHandler {
             }
         }
 
+        // 右键点击页码标签栏：切换右下角数量显示。
+        if (button == 1 && pageButtons.jeiEnhancements$isPageManagementVisible()
+                && isClickOnPageArea(overlay, mouseX, mouseY)) {
+            BookmarkLayoutManager.getInstance().toggleRenderQuantities();
+            BookmarkLayoutManager.getInstance().save();
+            forceRefreshBookmarks(overlay);
+            event.setCanceled(true);
+            return;
+        }
+
         // 检查是否在组面板区域
         if (BookmarkLayoutManager.getInstance().isVerticalMode()) {
             GroupingDragHandler dragHandler = GroupingDragHandler.getInstance();
